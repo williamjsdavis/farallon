@@ -1,0 +1,22 @@
+[project]
+name = "farallon"
+version = "0.1.0"
+description = "Executable geological histories fitted to observed maps"
+requires-python = ">=3.12,<3.15"
+dependencies = [
+  "numpy>=2.2,<2.6",
+  "numba>=0.63,<0.68",
+  "scipy>=1.15,<1.19",
+  "pillow>=11,<13",
+  "fastapi>=0.115,<1",
+  "uvicorn>=0.34,<1",
+  "openai>=2,<3",
+  "python-dotenv>=1,<2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8,<10"]
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

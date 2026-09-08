@@ -1,0 +1,272 @@
+{
+  "schemaVersion": 1,
+  "title": "Sheep Mountain \u2014 northwestern fold nose",
+  "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages are retained. Quaternary cover, transparent/outside pixels and colors inconsistent with the legend are unobserved.",
+  "bounds": {
+    "xmin": 0.0,
+    "xmax": 5.115384615384615,
+    "ymin": 0.0,
+    "ymax": 3.8461538461538463
+  },
+  "boundsArray": [
+    0.0,
+    5.115384615384615,
+    0.0,
+    3.8461538461538463
+  ],
+  "coordinateSystem": {
+    "x": "east",
+    "y": "north",
+    "z": "up",
+    "units": "km",
+    "georeferenced": false,
+    "origin": "southwest corner of source crop"
+  },
+  "surface": {
+    "type": "flat",
+    "z": 0.0,
+    "units": "km",
+    "schematic": true
+  },
+  "sourceImage": "assets/Geological-map-of-Sheep-Mountain-anticline-The-Bighorn-River-dissects-the-fold.webp",
+  "sourceImageSHA256": "df0054eeb1823ee849edc29020d6a75e801d25fff6f0225fc1278674ae6bdbeb",
+  "sourceImageDimensions": {
+    "width": 697,
+    "height": 671
+  },
+  "sourceCrop": {
+    "x": 20,
+    "y": 50,
+    "width": 266,
+    "height": 200
+  },
+  "sourceCropLTRB": [
+    20,
+    50,
+    286,
+    250
+  ],
+  "scaleCalibration": {
+    "pixelsPerKm": 52.0,
+    "barLengthKm": 1.0,
+    "barEndpointsPixels": [
+      [
+        438,
+        650
+      ],
+      [
+        490,
+        650
+      ]
+    ],
+    "method": "Manual visual reading of the source image's 1 km scale bar; approximate, without map georeferencing."
+  },
+  "raster": {
+    "width": 256,
+    "height": 256,
+    "order": "rows north to south; columns west to east",
+    "sampleLocations": "cell centers",
+    "cellWidthKm": 0.019981971153846152,
+    "cellHeightKm": 0.015024038461538462,
+    "resampling": "nearest neighbor"
+  },
+  "palette": [
+    {
+      "id": 1,
+      "name": "Madison",
+      "color": "#893f7c",
+      "rgb": [
+        137,
+        63,
+        124
+      ],
+      "age": "Mississippian",
+      "legendSample": [
+        13,
+        628,
+        32,
+        636
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Amsden",
+      "color": "#214b8a",
+      "rgb": [
+        33,
+        75,
+        138
+      ],
+      "age": "Pennsylvanian",
+      "legendSample": [
+        13,
+        605,
+        32,
+        613
+      ]
+    },
+    {
+      "id": 3,
+      "name": "Tensleep",
+      "color": "#2e6faa",
+      "rgb": [
+        46,
+        111,
+        170
+      ],
+      "age": "Pennsylvanian",
+      "legendSample": [
+        13,
+        581,
+        32,
+        589
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Phosphoria",
+      "color": "#729ac8",
+      "rgb": [
+        114,
+        154,
+        200
+      ],
+      "age": "Permian",
+      "legendSample": [
+        13,
+        557,
+        32,
+        565
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Triassic",
+      "color": "#b1cbe6",
+      "rgb": [
+        177,
+        203,
+        230
+      ],
+      "age": "Triassic",
+      "legendSample": [
+        13,
+        534,
+        32,
+        542
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Jurassic",
+      "color": "#d4dfe4",
+      "rgb": [
+        212,
+        223,
+        228
+      ],
+      "age": "Jurassic",
+      "legendSample": [
+        13,
+        510,
+        32,
+        518
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Cretaceous",
+      "color": "#93c89b",
+      "rgb": [
+        147,
+        200,
+        155
+      ],
+      "age": "Cretaceous",
+      "legendSample": [
+        13,
+        485,
+        32,
+        493
+      ]
+    }
+  ],
+  "unobserved": {
+    "id": 0,
+    "name": "Unobserved / masked",
+    "color": "#00000000"
+  },
+  "labeledFraction": 0.6651611328125,
+  "labeledPixels": 43592,
+  "totalPixels": 65536,
+  "classCounts": {
+    "1": 147,
+    "2": 195,
+    "3": 1911,
+    "4": 3484,
+    "5": 4541,
+    "6": 23832,
+    "7": 9482
+  },
+  "classFractions": {
+    "1": 0.0022430419921875,
+    "2": 0.0029754638671875,
+    "3": 0.0291595458984375,
+    "4": 0.05316162109375,
+    "5": 0.0692901611328125,
+    "6": 0.3636474609375,
+    "7": 0.144683837890625
+  },
+  "excludedCounts": {
+    "transparentOrOutside": 100,
+    "quaternaryCover": 7290,
+    "lineworkAnnotationsOrUncertainColor": 14554
+  },
+  "classification": {
+    "method": "Nearest fixed legend color in 8-bit sRGB",
+    "maxColorDistance": 25.0,
+    "quaternaryRGB": [
+      251,
+      240,
+      141
+    ],
+    "requireOpaqueSource": true,
+    "maskFixedAcrossCandidates": true,
+    "interpolateAcrossMasks": false,
+    "exclusionReasonCodes": {
+      "0": "observed bedrock",
+      "1": "transparent/outside",
+      "2": "Quaternary cover",
+      "3": "linework, annotation, or uncertain compressed color"
+    }
+  },
+  "citations": [
+    {
+      "authors": "Fiore Allwardt et al.",
+      "year": 2007,
+      "publication": "Geosphere",
+      "figure": "Figure 1, printed page 409",
+      "doi": "10.1130/GES00088.1",
+      "url": "https://doi.org/10.1130/GES00088.1",
+      "localPaper": "papers/Fiore-et-al-Geosphere-2007.pdf",
+      "role": "Supplied geological map; target observations"
+    }
+  ],
+  "provenance": "Source figure supplied by the user. This target was rasterized from that figure, not from the NPS BICA GeoPackage or the Rioux USGS map. No new license is asserted for the source figure.",
+  "warnings": [
+    "This is an illustrative map interpretation, not dense ground samples or a surveyed/georeferenced reconstruction.",
+    "The observation surface is held flat at z=0. Real erosion and terrain affect these contacts and will leave residual mismatch.",
+    "Madison and Amsden occupy very few resolved source pixels in this crop; do not claim precise widths or thicknesses for them.",
+    "The source is a compressed raster. A fixed color tolerance masks uncertain, antialiased and annotated pixels; it does not reconstruct geology beneath them.",
+    "Triassic, Jurassic and Cretaceous are grouped map packages, not single formations.",
+    "The mapped arrowed axes represent folds, not evidence of an exposed surface fault.",
+    "A good surface fit does not uniquely constrain the 3D geometry or geological history."
+  ],
+  "files": {
+    "array": "data/target.npz",
+    "image": "data/target.png",
+    "mask": "data/target_mask.png",
+    "sourceCrop": "data/target_source.png",
+    "metadata": "data/target.json"
+  }
+}
