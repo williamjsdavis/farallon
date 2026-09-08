@@ -5,7 +5,7 @@ Open **http://localhost:3000**. The story is **visual evidence → executable hi
 ## Before going on stage
 
 - Click **Reset**. Confirm the starting history has only `strata(...)` and `erode(level=0)`: seven horizontal packages, **no fold**. Its surface prediction is Cretaceous throughout.
-- Leave the map on **Source**, the lower panel on **Reasoning**, cutaway near zero and **Vertical 1×**. Confirm **Replay next (3)** is available for the current terrain scene.
+- Leave the map on **Source**, the lower panel on **Reasoning**, cutaway near zero and **Vertical 1×**. Confirm **Replay next (1/3)** is available for the current terrain scene.
 - **Terrain** shows the actual cached USGS DEM: **416.1 m relief** across **6.059 × 4.139 km**. Printed map ticks provide approximate registration; details are in [data/TERRAIN.md](data/TERRAIN.md).
 - Optional full-map context: `http://localhost:3000/api/image/full`. **Source** shows the original crop; **Units** shows the fixed classified observations.
 - **Generate**, feature tests and 3D controls use local computation. They do not make another model API call.
@@ -29,7 +29,7 @@ Live hypotheses and timing vary: describe the result actually shown. Read **Expe
 
 Say: **“I’ll switch to our saved rehearsal. These are genuine GPT-6 proposals and their recorded simulations; this sequence is replay.”**
 
-When idle, click **Reset**, then **Replay next** three times. The app identifies replay visibly. Records are ordered by their saved **`recorded_at` timestamps**, and filtered to the current terrain and starting history. Original flat-surface experiments remain archived and are not comparable or offered for this scene. A busy request must finish or error before replay is available.
+When idle, click **Replay next** three times. The app identifies replay visibly and shows the step count. It plays only the explicit three-step rehearsal in `data/replay.json`, with the current terrain, starting history and accepted-model continuity checked before playback. Other investigations never enter this sequence. After step three, **Replay complete** is disabled; there is no automatic wraparound. **Reset** restarts the rehearsal from undeformed layers. **Return to live** restores the investigation you had open before replay, including the selected model and history editor. Original flat-surface experiments remain archived and are not comparable or offered for this scene. A busy request must finish or error before replay is available.
 
 Replayed timing is recorded timing, not a fresh benchmark. Orbit and cutaway stay interactive; feature tests perform new local renders. The third recorded candidate is rejected, leaving the second model as best. Replay displays the candidate for inspection, so click **Restore best** after the third replay before the feature demonstration.
 

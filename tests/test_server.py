@@ -178,3 +178,97 @@ def test_legacy_or_stale_replays_are_excluded_and_cannot_load(isolated_controlle
     assert [record["id"] for record in summaries] == ["111111111111"]
     assert client.get("/api/runs/000000000000").status_code == 409
     assert client.get("/api/runs/111111111111").status_code == 200
+
+
+@pytest.fixture
+def playlist_case(isolated_controller):
+    client, path = isolated_controller
+    run_dir = path / "data/runs"
+    run_dir.mkdir()
+    base = server.history_to_program(server.canonical(server.BASELINE))
+
+    def folded(x):
+        history = server.canonical(server.BASELINE)
+        history["events"].insert(-1, {"type": "anticline", "x": x})
+        return server.history_to_program(history)
+
+    first, rejected, third = folded(2), folded(3), folded(4)
+    ids = ["ffffffff1111", "000000001111", "777777773333"]
+    specifications = [(base, first, True), (first, rejected, False), (first, third, True)]
+    for index, (run_id, (before, candidate, accepted)) in enumerate(zip(ids, specifications)):
+        record = saved_fixture(before_program=before, accepted=accepted,
+                               recorded_at=f"2026-09-08T12:00:0{3-index}Z",
+                               result={"id": run_id, "scene_id": server.SCENE_ID,
+                                       "baseline_id": server.BASELINE_ID, "program": candidate,
+                                       "metrics": {"miou": 0.2 + index * 0.1}})
+        (run_dir / f"{run_id}.json").write_text(json.dumps(record))
+    manifest = {"version": 1, "title": "A single investigation", "scene_id": server.SCENE_ID,
+                "baseline_id": server.BASELINE_ID, "run_ids": ids}
+    (path / "data/replay.json").write_text(json.dumps(manifest))
+    return client, path, ids
+
+
+def test_playlist_keeps_explicit_order_and_excludes_unrelated_archive_runs(playlist_case):
+    client, path, ids = playlist_case
+    (path / "data/runs/999999999999.json").write_text(json.dumps(saved_fixture()))
+    response = client.get("/api/replay")
+    assert response.status_code == 200
+    assert response.json()["title"] == "A single investigation"
+    assert response.json()["scene_id"] == server.SCENE_ID
+    assert response.json()["baseline_id"] == server.BASELINE_ID
+    assert [row["id"] for row in response.json()["runs"]] == ids
+    assert [row["accepted"] for row in response.json()["runs"]] == [True, False, True]
+    # The archive stays complete and timestamp ordered independently.
+    archive = client.get("/api/runs").json()
+    assert {row["id"] for row in archive} == {*ids, "999999999999"}
+    assert [row["id"] for row in archive if row["id"] in ids] == list(reversed(ids))
+
+
+@pytest.mark.parametrize("location", ["manifest", "record", "result"])
+@pytest.mark.parametrize("identity", ["scene_id", "baseline_id"])
+def test_playlist_rejects_stale_identity_at_every_level(playlist_case, location, identity):
+    client, path, ids = playlist_case
+    file = path / "data/replay.json" if location == "manifest" else path / "data/runs" / f"{ids[0]}.json"
+    value = json.loads(file.read_text())
+    (value["result"] if location == "result" else value)[identity] = "stale"
+    file.write_text(json.dumps(value))
+    assert client.get("/api/replay").status_code == 409
+
+
+def test_playlist_missing_record_is_visible_and_does_not_fall_back_to_archive(playlist_case):
+    client, path, _ = playlist_case
+    file = path / "data/replay.json"
+    manifest = json.loads(file.read_text())
+    manifest["run_ids"][1] = "123456789abc"
+    file.write_text(json.dumps(manifest))
+    response = client.get("/api/replay")
+    assert response.status_code == 404
+    assert "123456789abc" in response.json()["detail"]
+
+
+def test_playlist_rejects_continuation_from_a_rejected_candidate(playlist_case):
+    client, path, ids = playlist_case
+    rejected = json.loads((path / "data/runs" / f"{ids[1]}.json").read_text())
+    file = path / "data/runs" / f"{ids[2]}.json"
+    continuation = json.loads(file.read_text())
+    continuation["before_program"] = rejected["result"]["program"]
+    file.write_text(json.dumps(continuation))
+    response = client.get("/api/replay")
+    assert response.status_code == 409
+    assert "accepted history" in response.json()["detail"]
+
+
+def test_playlist_rejects_reordering_that_breaks_history_continuity(playlist_case):
+    client, path, _ = playlist_case
+    file = path / "data/replay.json"
+    manifest = json.loads(file.read_text())
+    manifest["run_ids"].reverse()
+    file.write_text(json.dumps(manifest))
+    assert client.get("/api/replay").status_code == 409
+
+
+def test_missing_playlist_is_visible_even_if_archive_has_records(isolated_controller):
+    client, path = isolated_controller
+    (path / "data/runs").mkdir()
+    (path / "data/runs/999999999999.json").write_text(json.dumps(saved_fixture()))
+    assert client.get("/api/replay").status_code == 404

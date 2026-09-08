@@ -412,3 +412,58 @@ def replay(run_id: str):
     if record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID:
         raise HTTPException(409, "This recording belongs to an earlier terrain or starting history. Use the current scene's recordings.")
     return record
+
+
+def _read_replay_json(path: Path, description: str) -> dict:
+    try:
+        value = json.loads(path.read_text())
+    except FileNotFoundError:
+        raise HTTPException(404, f"{description} is missing.") from None
+    except (OSError, ValueError):
+        raise HTTPException(409, f"{description} could not be read as valid JSON.") from None
+    if not isinstance(value, dict):
+        raise HTTPException(409, f"{description} must be a JSON object.")
+    return value
+
+
+@app.get("/api/replay")
+def replay_playlist():
+    """One explicitly ordered investigation, separate from the full archive."""
+    manifest = _read_replay_json(ROOT / "data/replay.json", "Replay playlist")
+    if manifest.get("scene_id") != SCENE_ID or manifest.get("baseline_id") != BASELINE_ID:
+        raise HTTPException(409, "Replay playlist belongs to another terrain or starting history.")
+    run_ids = manifest.get("run_ids")
+    title = manifest.get("title")
+    if (manifest.get("version") != 1 or not isinstance(title, str) or not title.strip()
+            or not isinstance(run_ids, list) or not run_ids
+            or any(not isinstance(rid, str) or len(rid) != 12
+                   or any(c not in "0123456789abcdef" for c in rid) for rid in run_ids)
+            or len(set(run_ids)) != len(run_ids)):
+        raise HTTPException(409, "Replay playlist has an invalid title, version, or ordered record list.")
+    incumbent = canonical(BASELINE)
+    summaries = []
+    for run_id in run_ids:
+        record = _read_replay_json(ROOT / "data/runs" / f"{run_id}.json", f"Replay record {run_id}")
+        result = record.get("result")
+        if (record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID
+                or not isinstance(result, dict) or result.get("scene_id") != SCENE_ID
+                or result.get("baseline_id") != BASELINE_ID):
+            raise HTTPException(409, f"Replay record {run_id} belongs to another terrain or starting history.")
+        try:
+            before = canonical(record["before_program"])
+            candidate = canonical(result["program"])
+            accepted = record["accepted"]
+            headline = record["proposal"]["headline"]
+            miou = result["metrics"]["miou"]
+            if (result.get("id") != run_id or not isinstance(accepted, bool)
+                    or not isinstance(headline, str) or isinstance(miou, bool)
+                    or not isinstance(miou, (int, float)) or not 0 <= miou <= 1):
+                raise ValueError("Invalid recording fields")
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(409, f"Replay record {run_id} has invalid or incomplete history data.") from None
+        if before != incumbent:
+            raise HTTPException(409, f"Replay record {run_id} does not continue the playlist's accepted history.")
+        summaries.append({"id": run_id, "headline": headline, "accepted": accepted, "miou": miou})
+        if accepted:
+            incumbent = candidate
+    return {"title": title, "scene_id": SCENE_ID, "baseline_id": BASELINE_ID, "runs": summaries}

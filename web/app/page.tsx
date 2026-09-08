@@ -30,6 +30,12 @@ import type {
 
 const percent = (v: number) => `${(v * 100).toFixed(1)}%`;
 type SavedRun = { id: string; headline: string };
+type ReplayPlaylist = {
+  title: string;
+  scene_id: string;
+  baseline_id: string;
+  runs: SavedRun[];
+};
 type Bootstrap = {
   target: Target;
   baseline: ModelResult;
@@ -40,6 +46,18 @@ type Bootstrap = {
   baseline_id?: string;
 };
 type SessionRun = RunRecord & { origin: 'live' | 'replay' };
+type Investigation = {
+  best: ModelResult;
+  selected: ModelResult;
+  program: string;
+  runs: SessionRun[];
+  displayAttempt?: SessionRun;
+  proposal?: Proposal;
+  mode: 'live' | 'replay' | 'manual' | 'test';
+  counterfactual: string;
+  ablationParent?: ModelResult;
+};
+type ReplaySession = { live: Investigation; runs: SessionRun[] };
 async function request<T>(path: string, body?: unknown): Promise<T> {
   const response = await fetch(
     `/api/${path}`,
@@ -83,8 +101,11 @@ export default function Home() {
   const [cut, setCut] = useState(0.12);
   const [mapTab, setMapTab] = useState('units');
   const [lowerTab, setLowerTab] = useState('reasoning');
-  const [saved, setSaved] = useState<{ id: string; headline: string }[]>([]);
-  const [replayIndex, setReplayIndex] = useState(0);
+  const [playlist, setPlaylist] = useState<ReplayPlaylist>();
+  const [replaySession, setReplaySession] = useState<ReplaySession>();
+  const replayIndex = replaySession?.runs.length || 0;
+  const replayLength = playlist?.runs.length || 0;
+  const replayComplete = replayLength > 0 && replayIndex >= replayLength;
   const [mode, setMode] = useState<'live' | 'replay' | 'manual' | 'test'>(
     'live',
   );
@@ -107,7 +128,14 @@ export default function Home() {
     const run = runs.find((item) => item.result.id === result.id);
     setProposal(run?.proposal);
     setDisplayAttempt(run);
-    setMode(run?.origin || (result.id === baseline?.id ? 'live' : 'manual'));
+    setMode(
+      run?.origin ||
+        (result.id === baseline?.id
+          ? replaySession
+            ? 'replay'
+            : 'live'
+          : 'manual'),
+    );
   };
   useEffect(() => {
     request<Bootstrap>('bootstrap')
@@ -121,9 +149,9 @@ export default function Home() {
         setModel(data.model);
       })
       .catch((e) => setError(e.message));
-    request<SavedRun[]>('runs')
-      .then(setSaved)
-      .catch(() => {});
+    request<ReplayPlaylist>('replay')
+      .then(setPlaylist)
+      .catch((e) => setError(`Replay unavailable: ${e.message}`));
   }, []);
   useEffect(() => {
     if (!isBusy) return;
@@ -136,7 +164,7 @@ export default function Home() {
   }, [isBusy]);
 
   async function iterate() {
-    if (!best || busy) return;
+    if (!best || busy || replaySession) return;
     setError('');
     setProposal(undefined);
     setDisplayAttempt(undefined);
@@ -211,9 +239,6 @@ export default function Home() {
         throw new Error(
           'The connection ended before a measured result arrived. The previous best is retained.',
         );
-      request<SavedRun[]>('runs')
-        .then(setSaved)
-        .catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Iteration failed');
       if (!complete) setProgram(best.program);
@@ -244,7 +269,8 @@ export default function Home() {
       setMode('manual');
       setProposal(undefined);
       setDisplayAttempt(undefined);
-      if (result.metrics.score > best.metrics.score) setBest(result);
+      if (!replaySession && result.metrics.score > best.metrics.score)
+        setBest(result);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Generation failed');
     } finally {
@@ -300,29 +326,56 @@ export default function Home() {
   }
 
   async function replay() {
-    if (busy || !saved.length) return;
+    if (busy || !playlist || !baseline || !best || !selected || replayComplete)
+      return;
+    const next = playlist.runs[replayIndex];
+    if (!next) return;
     beginWork('Loading a recorded GPT-6 proposal');
     setError('');
     try {
-      const data = await request<RunRecord>(
-        `runs/${saved[replayIndex % saved.length].id}`,
-      );
+      if (
+        playlist.scene_id !== baseline.scene_id ||
+        playlist.baseline_id !== baseline.baseline_id
+      )
+        throw new Error(
+          'The rehearsal belongs to a different scene. Reload the app.',
+        );
+      const data = await request<RunRecord>(`runs/${next.id}`);
+      if (
+        data.scene_id !== playlist.scene_id ||
+        data.baseline_id !== playlist.baseline_id
+      )
+        throw new Error('The recorded scene changed. Reload the app.');
       const record: SessionRun = { ...data, origin: 'replay' };
+      const recordedRuns = [...(replaySession?.runs || []), record];
+      // A rehearsal has its own history and incumbent. Preserve live work so
+      // entering replay never mixes unrelated proposals or replaces that work.
+      setReplaySession({
+        live: replaySession?.live || {
+          best,
+          selected,
+          program,
+          runs,
+          displayAttempt,
+          proposal,
+          mode,
+          counterfactual,
+          ablationParent,
+        },
+        runs: recordedRuns,
+      });
       setMode('replay');
       setProposal(record.proposal);
       setDisplayAttempt(record);
-      setRuns((previous) =>
-        previous.some((r) => r.result.id === record.result.id)
-          ? previous
-          : [...previous, record],
-      );
+      setRuns(recordedRuns);
       show(record.result);
-      if (
-        record.accepted &&
-        (!best || record.result.metrics.score > best.metrics.score)
-      )
-        setBest(record.result);
-      setReplayIndex((v) => v + 1);
+      setBest(
+        recordedRuns.reduce(
+          (incumbent, attempt) =>
+            attempt.accepted ? attempt.result : incumbent,
+          baseline,
+        ),
+      );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load recording');
     } finally {
@@ -330,15 +383,33 @@ export default function Home() {
     }
   }
 
+  function returnToLive() {
+    if (busy || !replaySession) return;
+    const live = replaySession.live;
+    setBest(live.best);
+    setSelected(live.selected);
+    setProgram(live.program);
+    setRuns(live.runs);
+    setDisplayAttempt(live.displayAttempt);
+    setProposal(live.proposal);
+    setMode(live.mode);
+    setCounterfactual(live.counterfactual);
+    setAblationParent(live.ablationParent);
+    setReplaySession(undefined);
+    setError('');
+  }
+
   function reset() {
-    if (!baseline) return;
+    if (!baseline || busy) return;
     setBest(baseline);
     show(baseline);
     setRuns([]);
     setProposal(undefined);
     setDisplayAttempt(undefined);
-    setMode('live');
-    setReplayIndex(0);
+    setMode(replaySession ? 'replay' : 'live');
+    setReplaySession((session) =>
+      session ? { ...session, runs: [] } : undefined,
+    );
     setError('');
   }
   const last = runs.at(-1);
@@ -370,17 +441,31 @@ export default function Home() {
             variant="ghost"
             disabled={!!busy || !baseline}
             onClick={reset}
-            title="Return to the starting hypothesis"
+            title={
+              replaySession
+                ? 'Restart the recorded rehearsal'
+                : 'Return to the starting hypothesis'
+            }
           >
             <RotateCcw size={14} /> Reset
           </Button>
           <Button
             className="run-button"
-            disabled={!!busy || !best || !keyAvailable}
-            onClick={iterate}
+            disabled={!!busy || !best || (!replaySession && !keyAvailable)}
+            onClick={replaySession ? returnToLive : iterate}
           >
-            {busy ? <Loader2 className="spin" /> : <Sparkles />}
-            {busy ? 'Testing hypothesis' : 'Let GPT-6 investigate'}
+            {busy ? (
+              <Loader2 className="spin" />
+            ) : replaySession ? (
+              <RotateCcw />
+            ) : (
+              <Sparkles />
+            )}
+            {busy
+              ? 'Testing hypothesis'
+              : replaySession
+                ? 'Return to live'
+                : 'Let GPT-6 investigate'}
             {!busy && <ArrowRight size={16} />}
           </Button>
         </div>
@@ -752,7 +837,7 @@ export default function Home() {
                   </div>
                   <div>
                     <p className="eyebrow">
-                      {mode === 'replay'
+                      {mode === 'replay' && proposal
                         ? 'RECORDED GPT-6 PROPOSAL'
                         : proposal
                           ? 'GPT-6 VISUAL HYPOTHESIS'
@@ -909,14 +994,25 @@ export default function Home() {
                 ))}
               </div>
               <div className="replay-control">
-                <span>Recorded runs are a transparent backup.</span>
+                <output>
+                  {replayComplete
+                    ? `Rehearsal complete · ${replayLength}/${replayLength}. Reset to replay again.`
+                    : playlist
+                      ? `${playlist.title} · ${replayIndex}/${replayLength}`
+                      : 'Rehearsal unavailable'}
+                </output>
                 <Button
                   size="xs"
                   variant="ghost"
-                  disabled={!!busy || !saved.length}
+                  disabled={!!busy || !replayLength || replayComplete}
                   onClick={replay}
                 >
-                  <Play size={11} /> Replay next ({saved.length})
+                  {replayComplete ? <Check size={11} /> : <Play size={11} />}
+                  {replayComplete
+                    ? 'Replay complete'
+                    : replayLength
+                      ? `Replay next (${replayIndex + 1}/${replayLength})`
+                      : 'Replay unavailable'}
                 </Button>
               </div>
             </div>
