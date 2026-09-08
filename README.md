@@ -2,6 +2,9 @@
 
 GPT-6 reads a geological map, writes an executable geological history, and tests the resulting 3D world against the observed outcrops. It starts with undeformed sedimentary layers and must add missing deformation. The demo uses the northwest nose of Sheep Mountain, Wyoming, from the supplied Fiore Allwardt et al. (2007) map, intersected with real USGS 3DEP topography.
 
+<img width="1430" height="680" alt="Screenshot 2026-09-08 at 4 00 43 PM" src="https://github.com/user-attachments/assets/e97c5f26-9eae-43b9-844f-89bcfcc67ab0" />
+
+
 ## Run locally
 
 Dependencies are already installed on this laptop. From this directory:
