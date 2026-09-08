@@ -6,11 +6,11 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { RockUnit, Volume } from '@/lib/geology-types';
 
 type SceneState = {
-  scene: THREE.Scene;
   renderer: THREE.WebGLRenderer;
   camera: THREE.PerspectiveCamera;
   controls: OrbitControls;
   block: THREE.Group;
+  grid: THREE.GridHelper;
 };
 function webglUnavailable(container: HTMLDivElement) {
   const message = document.createElement('p');
@@ -34,24 +34,33 @@ function disposeGroup(group: THREE.Group) {
   });
   group.clear();
 }
+const decode = (value: string) =>
+  Uint8Array.from(atob(value), (character) => character.charCodeAt(0));
 
 export function GeologyBlock({
   volume,
   surfaceImage,
   palette,
   cut,
+  verticalScale = 1,
 }: {
   volume: Volume;
   surfaceImage: string;
   palette: RockUnit[];
   cut: number;
+  verticalScale?: number;
 }) {
   const host = useRef<HTMLDivElement>(null),
     state = useRef<SceneState | null>(null);
-  const bytes = useMemo(
-    () => Uint8Array.from(atob(volume.data), (char) => char.charCodeAt(0)),
-    [volume.data],
+  const bytes = useMemo(() => decode(volume.data), [volume.data]);
+  const heights = useMemo(
+    () =>
+      volume.surface
+        ? new Float32Array(decode(volume.surface.data).buffer)
+        : null,
+    [volume.surface],
   );
+
   useEffect(() => {
     if (!host.current) return;
     const container = host.current;
@@ -66,22 +75,22 @@ export function GeologyBlock({
     container.appendChild(renderer.domElement);
     const scene = new THREE.Scene(),
       camera = new THREE.PerspectiveCamera(36, 1, 0.1, 100);
-    camera.position.set(7.6, 5.9, 8.4);
+    camera.position.set(8.5, 6.5, 9.5);
     const controls = new OrbitControls(camera, renderer.domElement);
-    controls.target.set(0, -0.55, 0);
+    controls.target.set(0, -0.5, 0);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
     controls.minDistance = 4;
-    controls.maxDistance = 23;
+    controls.maxDistance = 26;
     controls.maxPolarAngle = Math.PI * 0.87;
     const block = new THREE.Group();
     scene.add(block);
-    const grid = new THREE.GridHelper(16, 16, 0x33424c, 0x25313a);
+    const grid = new THREE.GridHelper(18, 18, 0x33424c, 0x25313a);
     grid.position.y = -1.83;
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.48;
     scene.add(grid);
-    state.current = { scene, renderer, camera, controls, block };
+    state.current = { renderer, camera, controls, block, grid };
     const resize = () => {
       const { width, height } = container.getBoundingClientRect();
       renderer.setSize(width, height);
@@ -113,21 +122,45 @@ export function GeologyBlock({
 
   useEffect(() => {
     const context = state.current;
-    if (!context || !volume) return;
-    const { block } = context;
+    if (!context) return;
+    const { block, grid } = context;
     disposeGroup(block);
     let disposed = false;
     const [nz, ny, nx] = volume.shape;
     const [xmin, xmax, ymin, ymax, zmin, zmax] = volume.bounds;
     const startY = Math.min(ny - 2, Math.floor(cut * ny));
-    const fraction = startY / ny,
-      ycut = ymin + (ymax - ymin) * fraction;
-    const cx = (xmin + xmax) / 2,
+    const xAt = (i: number) => xmin + ((xmax - xmin) * i) / nx;
+    const yAt = (j: number) => ymin + ((ymax - ymin) * j) / ny;
+    const heightAt = (i: number, j: number) =>
+      heights ? heights[j * (nx + 1) + i] : zmax;
+    const ycut = yAt(startY),
+      cx = (xmin + xmax) / 2,
       cy = (ymin + ymax) / 2;
+    const position = (x: number, y: number, z: number) => [
+      x - cx,
+      z * verticalScale,
+      -(y - cy),
+    ];
+    grid.position.y = zmin * verticalScale - 0.03;
     const colors = new Uint8Array(256 * 4);
     palette.forEach((unit) => colors.set([...unit.rgb, 255], unit.id * 4));
     const voxel = (x: number, y: number, z: number) =>
       bytes[(z * ny + y) * nx + x];
+    // Cut walls end at the exact terrain mesh. Extend the nearest rock label
+    // across a partially clipped top voxel to avoid a half-cell display seam.
+    const surfaceUnits = new Uint8Array(nx * ny);
+    for (let y = 0; y < ny; y++)
+      for (let x = 0; x < nx; x++) {
+        for (let z = nz - 1; z >= 0; z--) {
+          const unit = voxel(x, y, z);
+          if (unit) {
+            surfaceUnits[y * nx + x] = unit;
+            break;
+          }
+        }
+      }
+    const wallVoxel = (x: number, y: number, z: number) =>
+      voxel(x, y, z) || surfaceUnits[y * nx + x];
     function texture(
       width: number,
       height: number,
@@ -146,119 +179,174 @@ export function GeologyBlock({
       map.needsUpdate = true;
       return map;
     }
-    function face(corners: number[][], map: THREE.Texture, shade = 0xffffff) {
-      const positions = corners.flatMap(([x, y, z]) => [x - cx, z, -(y - cy)]);
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute(
+    function geometry(positions: number[], uvs: number[], indices: number[]) {
+      const result = new THREE.BufferGeometry();
+      result.setAttribute(
         'position',
         new THREE.Float32BufferAttribute(positions, 3),
       );
-      geometry.setAttribute(
-        'uv',
-        new THREE.Float32BufferAttribute([0, 0, 1, 0, 1, 1, 0, 1], 2),
-      );
-      geometry.setIndex([0, 1, 2, 0, 2, 3]);
-      geometry.computeVertexNormals();
-      block.add(
-        new THREE.Mesh(
-          geometry,
-          new THREE.MeshBasicMaterial({
-            map,
-            color: shade,
-            side: THREE.DoubleSide,
-            transparent: true,
-            alphaTest: 0.1,
-          }),
-        ),
+      result.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+      result.setIndex(indices);
+      result.computeVertexNormals();
+      return result;
+    }
+    function outline(points: number[][]) {
+      const segments = points
+        .slice(1)
+        .flatMap((point, index) => [...points[index], ...point]);
+      const line = new THREE.BufferGeometry();
+      line.setAttribute(
+        'position',
+        new THREE.Float32BufferAttribute(segments, 3),
       );
       block.add(
         new THREE.LineSegments(
-          new THREE.EdgesGeometry(geometry),
+          line,
           new THREE.LineBasicMaterial({
             color: 0xdce6e8,
             transparent: true,
-            opacity: 0.25,
+            opacity: 0.28,
           }),
         ),
       );
     }
-    // PNG rows run north to south. Standard Texture.flipY gives north at v=1.
+    function wall(
+      count: number,
+      coordinate: (i: number) => [number, number, number],
+      map: THREE.Texture,
+      shade: number,
+    ) {
+      const positions: number[] = [],
+        uvs: number[] = [],
+        indices: number[] = [],
+        top: number[][] = [],
+        bottom: number[][] = [];
+      for (let i = 0; i <= count; i++) {
+        const [x, y, height] = coordinate(i),
+          low = position(x, y, zmin),
+          high = position(x, y, height);
+        positions.push(...low, ...high);
+        uvs.push(i / count, 0, i / count, (height - zmin) / (zmax - zmin));
+        top.push(high);
+        bottom.push(low);
+        if (i < count) {
+          const a = i * 2;
+          indices.push(a, a + 2, a + 1, a + 1, a + 2, a + 3);
+        }
+      }
+      block.add(
+        new THREE.Mesh(
+          geometry(positions, uvs, indices),
+          new THREE.MeshBasicMaterial({
+            map,
+            color: shade,
+            side: THREE.DoubleSide,
+            alphaTest: 0.1,
+          }),
+        ),
+      );
+      outline(top);
+      outline(bottom);
+      outline([bottom[0], top[0]]);
+      outline([bottom[count], top[count]]);
+    }
+    // The terrain cap shares its edge coordinates with all four cut walls.
+    // Its texture is the actual model/DEM intersection used in the score.
+    const positions: number[] = [],
+      uvs: number[] = [],
+      indices: number[] = [];
+    for (let j = startY; j <= ny; j++)
+      for (let i = 0; i <= nx; i++) {
+        positions.push(...position(xAt(i), yAt(j), heightAt(i, j)));
+        uvs.push(i / nx, j / ny);
+        if (i < nx && j < ny) {
+          const a = (j - startY) * (nx + 1) + i,
+            b = a + nx + 1;
+          indices.push(a, a + 1, b, a + 1, b + 1, b);
+        }
+      }
+    const cap = geometry(positions, uvs, indices),
+      normals = cap.getAttribute('normal');
+    const sun = new THREE.Vector3(-0.45, 1, 0.65).normalize(),
+      shading: number[] = [];
+    for (let i = 0; i < normals.count; i++) {
+      const dot =
+        normals.getX(i) * sun.x +
+        normals.getY(i) * sun.y +
+        normals.getZ(i) * sun.z;
+      const brightness = 0.42 + 0.58 * Math.max(0, dot);
+      shading.push(brightness, brightness, brightness);
+    }
+    cap.setAttribute('color', new THREE.Float32BufferAttribute(shading, 3));
     const surface = new THREE.TextureLoader().load(surfaceImage, (map) => {
       if (disposed) map.dispose();
     });
     surface.colorSpace = THREE.SRGBColorSpace;
     surface.magFilter = THREE.NearestFilter;
     surface.minFilter = THREE.NearestFilter;
-    surface.offset.y = fraction;
-    surface.repeat.y = 1 - fraction;
-    face(
-      [
-        [xmin, ycut, zmax],
-        [xmax, ycut, zmax],
-        [xmax, ymax, zmax],
-        [xmin, ymax, zmax],
-      ],
-      surface,
+    block.add(
+      new THREE.Mesh(
+        cap,
+        new THREE.MeshBasicMaterial({
+          map: surface,
+          vertexColors: true,
+          side: THREE.DoubleSide,
+          alphaTest: 0.1,
+        }),
+      ),
     );
-    face(
-      [
-        [xmin, ycut, zmin],
-        [xmax, ycut, zmin],
-        [xmax, ycut, zmax],
-        [xmin, ycut, zmax],
-      ],
-      texture(nx, nz, (x, z) => voxel(x, startY, z)),
+    wall(
+      nx,
+      (i) => [xAt(i), ycut, heightAt(i, startY)],
+      texture(nx, nz, (x, z) => wallVoxel(x, startY, z)),
       0xe6ebf0,
     );
-    face(
-      [
-        [xmin, ymax, zmin],
-        [xmax, ymax, zmin],
-        [xmax, ymax, zmax],
-        [xmin, ymax, zmax],
-      ],
-      texture(nx, nz, (x, z) => voxel(x, ny - 1, z)),
+    wall(
+      nx,
+      (i) => [xAt(i), ymax, heightAt(i, ny)],
+      texture(nx, nz, (x, z) => wallVoxel(x, ny - 1, z)),
       0xd0d9e2,
     );
-    face(
-      [
-        [xmin, ycut, zmin],
-        [xmin, ymax, zmin],
-        [xmin, ymax, zmax],
-        [xmin, ycut, zmax],
-      ],
-      texture(ny - startY, nz, (y, z) => voxel(0, y + startY, z)),
+    wall(
+      ny - startY,
+      (j) => [xmin, yAt(j + startY), heightAt(0, j + startY)],
+      texture(ny - startY, nz, (y, z) => wallVoxel(0, y + startY, z)),
       0xc7d1db,
     );
-    face(
-      [
-        [xmax, ycut, zmin],
-        [xmax, ymax, zmin],
-        [xmax, ymax, zmax],
-        [xmax, ycut, zmax],
-      ],
-      texture(ny - startY, nz, (y, z) => voxel(nx - 1, y + startY, z)),
+    wall(
+      ny - startY,
+      (j) => [xmax, yAt(j + startY), heightAt(nx, j + startY)],
+      texture(ny - startY, nz, (y, z) => wallVoxel(nx - 1, y + startY, z)),
       0xc7d1db,
     );
-    face(
-      [
-        [xmin, ycut, zmin],
-        [xmax, ycut, zmin],
-        [xmax, ymax, zmin],
-        [xmin, ymax, zmin],
-      ],
-      texture(nx, ny - startY, (x, y) => voxel(x, y + startY, 0)),
-      0xc0cad4,
+    block.add(
+      new THREE.Mesh(
+        geometry(
+          [
+            ...position(xmin, ycut, zmin),
+            ...position(xmax, ycut, zmin),
+            ...position(xmax, ymax, zmin),
+            ...position(xmin, ymax, zmin),
+          ],
+          [0, 0, 1, 0, 1, 1, 0, 1],
+          [0, 1, 2, 0, 2, 3],
+        ),
+        new THREE.MeshBasicMaterial({
+          map: texture(nx, ny - startY, (x, y) => voxel(x, y + startY, 0)),
+          color: 0xc0cad4,
+          side: THREE.DoubleSide,
+        }),
+      ),
     );
     return () => {
       disposed = true;
     };
-  }, [volume, surfaceImage, palette, cut, bytes]);
+  }, [volume, surfaceImage, palette, cut, bytes, heights, verticalScale]);
   return (
     <div
       className="geology-canvas"
       ref={host}
-      aria-label="Interactive 3D geological block. Drag to orbit and use the cutaway slider to reveal its interior."
+      aria-label="Interactive geology with measured terrain. Drag to orbit and move the cutaway to reveal its interior."
     />
   );
 }

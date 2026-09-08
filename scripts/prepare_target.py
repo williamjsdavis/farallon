@@ -3,7 +3,7 @@
 
 This classifies source pixels by their distance from the seven legend colors.
 It does not fill contact lines, infer covered bedrock, or alter the source image.
-The target is a schematic map comparison, not a georeferenced terrain product.
+Printed geographic ticks provide approximate registration to a real DEM.
 """
 
 from __future__ import annotations
@@ -23,6 +23,52 @@ SOURCE_CROP = (20, 50, 286, 250)  # left, top, right, bottom; right/bottom exclu
 SCALE_BAR = ((438, 650), (490, 650))
 PIXELS_PER_KM = 52.0
 COLOR_TOLERANCE = 25.0  # Euclidean distance in source 8-bit sRGB
+
+# Manually read the actual tick strokes, not the adjacent text centers.
+# Coordinates are source-image pixel coordinates, measured from the top left.
+LONGITUDE_TICKS = [(64, -108 - 12/60), (179, -108 - 10/60),
+                   (294, -108 - 8/60), (410, -108 - 6/60),
+                   (529, -108 - 4/60)]
+LATITUDE_TICKS = [(156, 44 + 38/60), (335, 44 + 36/60)]
+
+
+def map_registration() -> dict:
+    """Approximate north-up geographic calibration, independent of geology fit."""
+    lon_pixels, lon_degrees = np.array(LONGITUDE_TICKS).T
+    lat_pixels, lat_degrees = np.array(LATITUDE_TICKS).T
+    lon_slope, lon_intercept = np.polyfit(lon_pixels, lon_degrees, 1)
+    lat_slope, lat_intercept = np.polyfit(lat_pixels, lat_degrees, 1)
+    x0, y0, x1, y1 = SOURCE_CROP
+    west, east = lon_slope * np.array([x0, x1]) + lon_intercept
+    north, south = lat_slope * np.array([y0, y1]) + lat_intercept
+    # WGS84 local radii of curvature; adequate for this roughly 6 km crop.
+    phi = np.deg2rad((north + south) / 2)
+    flattening = 1 / 298.257223563
+    eccentricity2 = flattening * (2 - flattening)
+    denom = 1 - eccentricity2 * np.sin(phi)**2
+    prime_vertical_radius = 6378137 / np.sqrt(denom)
+    meridional_radius = 6378137 * (1 - eccentricity2) / denom**1.5
+    width_km = prime_vertical_radius * np.cos(phi) * np.deg2rad(east - west) / 1000
+    height_km = meridional_radius * np.deg2rad(north - south) / 1000
+    residual_pixels = (lon_slope * lon_pixels + lon_intercept - lon_degrees) / lon_slope
+    return {
+        "method": "Manual printed-coordinate tick strokes; independent linear longitude(x) and latitude(y) fits; north-up assumed from map arrow.",
+        "longitudeTicks": [{"pixelX": x, "longitude": lon} for x, lon in LONGITUDE_TICKS],
+        "latitudeTicks": [{"pixelY": y, "latitude": lat} for y, lat in LATITUDE_TICKS],
+        "longitudeDegreesPerPixel": float(lon_slope),
+        "longitudeAtPixelX0": float(lon_intercept),
+        "latitudeDegreesPerPixel": float(lat_slope),
+        "latitudeAtPixelY0": float(lat_intercept),
+        "longitudeFitResidualPixels": residual_pixels.tolist(),
+        "longitudeFitMaxResidualPixels": float(np.max(np.abs(residual_pixels))),
+        "geographicBounds": {"west": float(west), "south": float(south), "east": float(east), "north": float(north)},
+        "widthKm": float(width_km), "heightKm": float(height_km),
+        "horizontalCRS": "EPSG:4326 assumed for DEM request; original figure horizontal datum is unspecified",
+        "localMetricMethod": "WGS84 ellipsoid radii of curvature at crop midpoint latitude; x east and y north from southwest crop corner",
+        "confidence": "Approximate figure registration, not surveyed control. Tick reading, figure distortion, cartographic generalization and unknown original datum remain. Tick-fit residuals do not measure external positional accuracy.",
+        "visualCheck": "Full-map USGS context hillshade has the corresponding NW-SE ridge and Bighorn River canyon; this is a qualitative check, not an independent accuracy measurement.",
+        "legacyScaleBarEstimate": {"pixelsPerKm": PIXELS_PER_KM, "barEndpointsPixels": [list(p) for p in SCALE_BAR], "used": False, "reason": "Replaced with independent horizontal and vertical printed-coordinate calibration; the rough bar estimate is inconsistent with those ticks."},
+    }
 
 # Frozen colors sampled from the centers of the source legend swatches.
 # These are categorical identifiers, not estimates of physical rock color.
@@ -70,8 +116,9 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
     labels = np.array(Image.fromarray(native_labels).resize((size, size), Image.Resampling.NEAREST))
     reasons = np.array(Image.fromarray(native_reasons).resize((size, size), Image.Resampling.NEAREST))
     mask = labels > 0
-    width_km = (x1 - x0) / PIXELS_PER_KM
-    height_km = (y1 - y0) / PIXELS_PER_KM
+    registration = map_registration()
+    width_km = registration["widthKm"]
+    height_km = registration["heightKm"]
     xs = (np.arange(size, dtype=np.float64) + 0.5) * width_km / size
     ys = height_km - (np.arange(size, dtype=np.float64) + 0.5) * height_km / size
     bounds = {"xmin": 0.0, "xmax": width_km, "ymin": 0.0, "ymax": height_km}
@@ -93,14 +140,15 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
         "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages are retained. Quaternary cover, transparent/outside pixels and colors inconsistent with the legend are unobserved.",
         "bounds": bounds,
         "boundsArray": [0.0, width_km, 0.0, height_km],
-        "coordinateSystem": {"x": "east", "y": "north", "z": "up", "units": "km", "georeferenced": False, "origin": "southwest corner of source crop"},
-        "surface": {"type": "flat", "z": 0.0, "units": "km", "schematic": True},
+        "coordinateSystem": {"x": "east", "y": "north", "z": "up", "units": "km", "georeferenced": True, "registrationAccuracy": "approximate printed-figure ticks", "origin": "southwest corner of source crop"},
+        "surface": {"type": "terrain", "file": "data/terrain.npz", "units": "km", "heightDatum": "minimum cached USGS DEM elevation", "registration": "approximate"},
         "sourceImage": str(source_path.relative_to(ROOT)) if source_path.is_relative_to(ROOT) else str(source_path),
         "sourceImageSHA256": hashlib.sha256(source_path.read_bytes()).hexdigest(),
         "sourceImageDimensions": {"width": source.width, "height": source.height},
         "sourceCrop": {"x": x0, "y": y0, "width": x1 - x0, "height": y1 - y0},
         "sourceCropLTRB": list(SOURCE_CROP),
-        "scaleCalibration": {"pixelsPerKm": PIXELS_PER_KM, "barLengthKm": 1.0, "barEndpointsPixels": [list(point) for point in SCALE_BAR], "method": "Manual visual reading of the source image's 1 km scale bar; approximate, without map georeferencing."},
+        "scaleCalibration": registration,
+        "geographicBounds": registration["geographicBounds"],
         "raster": {"width": size, "height": size, "order": "rows north to south; columns west to east", "sampleLocations": "cell centers", "cellWidthKm": width_km / size, "cellHeightKm": height_km / size, "resampling": "nearest neighbor"},
         "palette": PALETTE,
         "unobserved": {"id": 0, "name": "Unobserved / masked", "color": "#00000000"},
@@ -114,8 +162,8 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
         "citations": [{"authors": "Fiore Allwardt et al.", "year": 2007, "publication": "Geosphere", "figure": "Figure 1, printed page 409", "doi": "10.1130/GES00088.1", "url": "https://doi.org/10.1130/GES00088.1", "localPaper": "papers/Fiore-et-al-Geosphere-2007.pdf", "role": "Supplied geological map; target observations"}],
         "provenance": "Source figure supplied by the user. This target was rasterized from that figure, not from the NPS BICA GeoPackage or the Rioux USGS map. No new license is asserted for the source figure.",
         "warnings": [
-            "This is an illustrative map interpretation, not dense ground samples or a surveyed/georeferenced reconstruction.",
-            "The observation surface is held flat at z=0. Real erosion and terrain affect these contacts and will leave residual mismatch.",
+            "This is an illustrative map interpretation, not dense ground samples or a surveyed reconstruction.",
+            "Real USGS 3DEP terrain is registered approximately using printed coordinate ticks. Original map datum, distortion and generalized contacts can cause positional mismatch; see data/TERRAIN.md.",
             "Madison and Amsden occupy very few resolved source pixels in this crop; do not claim precise widths or thicknesses for them.",
             "The source is a compressed raster. A fixed color tolerance masks uncertain, antialiased and annotated pixels; it does not reconstruct geology beneath them.",
             "Triassic, Jurassic and Cretaceous are grouped map packages, not single formations.",

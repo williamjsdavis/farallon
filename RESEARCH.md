@@ -1,5 +1,7 @@
 # Farallon: geological history inference demo
 
+Implementation update: this document records the initial research and scope decisions. The current demo now uses cached USGS 3DEP topography, printed-coordinate map calibration, and an undeformed starting history. See [README.md](README.md) for current measurements and [terrain provenance](data/TERRAIN.md) for the fixed observation surface; initial flat-surface assumptions below are historical.
+
 The strongest five-hour version is an interactive geological hypothesis test: a target map remains fixed while GPT-6 proposes an executable history, a small procedural engine generates its three-dimensional consequences, and independent measurements show which changes improve the exposed geology. The memorable moment is a structural revision, such as adding a fault because several contacts are displaced across the same line, followed by a visible improvement in the map and a consistent change in the corresponding cross-section. Without an observed section, the section illustrates the hypothesis rather than independently validating it.
 
 This memo recommends a modest constructive event simulator, an explicit labeled volume, a shared surface/section evaluator, and a short visual reasoning loop. Secure a controlled synthetic target with a hidden generating history first; promote a prepared real-map crop to the main demonstration if its terrain and geological complexity fit the engine. Keep a full relational reasoning system and arbitrary new numerical operators outside the initial critical path.

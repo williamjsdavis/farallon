@@ -162,3 +162,43 @@ def test_coarse_search_returns_full_resolution_metrics_and_obeys_small_budgets()
         assert metrics["evaluated_pixels"] == 144 ** 2
         assert metrics["score"] >= baseline["score"]
         assert evaluations <= budget
+
+
+def test_terrain_is_fixed_and_downsampled_with_the_same_north_up_coordinates():
+    from geology.engine import render_map
+    from geology.history import validate_history
+    from geology.search import refine_history
+
+    history = validate_history({"events": [
+        {"type": "strata", "levels": [-0.8, -0.4, -0.15], "units": [1, 2, 3, 4]},
+        {"type": "anticline", "x": 2, "y": 1.8, "uplift": 1.3, "plunge_nw": 12, "plunge_se": 0},
+        {"type": "erode", "level": 0},
+    ]})
+    # Non-square axes and asymmetric elevations expose accidental transposes
+    # or row reversals that would be invisible on a flat square terrain.
+    xs, ys = np.linspace(0, 4, 173), np.linspace(3, 0, 145)
+    xx, yy = np.meshgrid(xs, ys)
+    terrain = 0.08 + 0.14 * xx / 4 + 0.06 * np.cos(2 * np.pi * yy / 3)
+    frozen_terrain = terrain.copy()
+    target = render_map(history, xs, ys, terrain=terrain)
+    assert not np.any(target == 0)  # Explicit positive terrain replaces final flat erosion.
+    initial = deepcopy(history)
+    initial["events"][1]["x"] = 1.5
+    baseline = score_map(render_map(initial, xs, ys, terrain=terrain), target)
+    fitted, metrics, evaluations, _ = refine_history(initial, target, xs, ys, None, budget=32, seconds=2,
+                                                    allowed_fields=["anticline.x"], terrain=terrain)
+    assert metrics == score_map(render_map(fitted, xs, ys, terrain=terrain), target)
+    assert metrics["miou"] > baseline["miou"]
+    assert metrics["evaluated_pixels"] == 173 * 145
+    assert evaluations <= 32
+    np.testing.assert_array_equal(terrain, frozen_terrain)
+
+
+@pytest.mark.parametrize("bad_terrain", [np.zeros((10, 12)), np.full((18, 20), np.nan)])
+def test_search_rejects_misaligned_or_nonfinite_terrain(bad_terrain):
+    from geology.search import refine_history
+
+    history = {"events": [{"type": "strata", "levels": [-1], "units": [1, 2]}, {"type": "erode"}]}
+    with pytest.raises(ValueError, match="terrain"):
+        refine_history(history, np.full((18, 20), 2, dtype=np.uint8), np.arange(20), np.arange(18),
+                       None, terrain=bad_terrain, budget=1)

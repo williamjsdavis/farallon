@@ -610,6 +610,15 @@ h3 {
   padding: 13px 17px;
   color: #9cb0bd;
 }
+.volume-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.volume-controls button {
+  font-size: 9px;
+  color: #afc2cf;
+}
 .run-row:hover {
   background: #1f2d37;
 }

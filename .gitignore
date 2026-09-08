@@ -14,6 +14,9 @@ data/runs/*
 !data/runs/772c9fcdb2cc.json
 !data/runs/e57cfef0bd45.json
 !data/runs/049306ce6f1f.json
+!data/runs/256e033e51d6.json
+!data/runs/33e081b4fb01.json
+!data/runs/e7837223f163.json
 tmp/
 *.tsbuildinfo
 .DS_Store

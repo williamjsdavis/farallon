@@ -34,9 +34,13 @@ async def rehearse(calls: int) -> int:
                 return 2
             bootstrap = (await client.get("/api/bootstrap")).json()
             current = bootstrap["baseline"]
+            scene_id = bootstrap.get("scene_id", current.get("scene_id"))
+            baseline_id = bootstrap.get("baseline_id", current.get("baseline_id"))
             baseline_metrics = current["metrics"]
             print(json.dumps({"type": "baseline", "model": health["model"], "metrics": baseline_metrics,
-                              "timings": current["timings"], "warmup_ms": health["warmup_ms"]}), flush=True)
+                              "timings": current["timings"], "warmup_ms": health["warmup_ms"],
+                              "scene_id": scene_id, "baseline_id": baseline_id,
+                              "event_types": [event["type"] for event in current["history"]["events"]]}), flush=True)
             previous: list[dict] = []
             for index in range(calls):
                 print(json.dumps({"type": "call_started", "call": index + 1, "maximum_calls": calls}), flush=True)
@@ -44,6 +48,8 @@ async def rehearse(calls: int) -> int:
                 result = None
                 async with client.stream("POST", "/api/iterate", json={
                     "program": current["program"], "previous": previous, "refine": True,
+                    **({"scene_id": scene_id} if scene_id is not None else {}),
+                    **({"baseline_id": baseline_id} if baseline_id is not None else {}),
                 }) as response:
                     response.raise_for_status()
                     async for line in response.aiter_lines():
@@ -62,18 +68,28 @@ async def rehearse(calls: int) -> int:
                     print("Iteration stream ended without a result; no automatic paid retry.", flush=True)
                     return 2
                 generated = result["result"]
+                if scene_id is not None and result.get("scene_id", generated.get("scene_id")) != scene_id:
+                    raise RuntimeError("Iteration belongs to a different or unidentified observation scene")
+                if baseline_id is not None and result.get("baseline_id", generated.get("baseline_id")) != baseline_id:
+                    raise RuntimeError("Iteration belongs to a different or unidentified starting history")
                 if "volume" not in generated or not generated["volume"]["data"]:
                     raise RuntimeError("Recorded iteration lacks the actual replay volume")
                 # Verify saved replay follows the same contract as the live payload.
                 replay = (await client.get(f"/api/runs/{generated['id']}")).json()
                 if replay["result"]["metrics"] != generated["metrics"]:
                     raise RuntimeError("Replay metrics do not match the live result")
+                if scene_id is not None and replay.get("scene_id", replay["result"].get("scene_id")) != scene_id:
+                    raise RuntimeError("Saved replay belongs to a different observation scene")
+                if baseline_id is not None and replay.get("baseline_id", replay["result"].get("baseline_id")) != baseline_id:
+                    raise RuntimeError("Saved replay belongs to a different starting history")
                 records.append({"id": generated["id"], "accepted": result["accepted"],
+                                "scene_id": scene_id, "baseline_id": baseline_id,
                                 "metrics": generated["metrics"], "model_ms": result["model_ms"],
                                 "search": result["search"], "generation": generated["timings"],
                                 "wall_ms": (perf_counter() - start) * 1000})
                 print(json.dumps({"type": "round_completed", "call": index + 1, **records[-1]}), flush=True)
                 previous.append({"headline": result["proposal"]["headline"],
+                                 "scene_id": scene_id, "baseline_id": baseline_id,
                                  "observation": result["proposal"]["observation"],
                                  "expected_effect": result["proposal"]["expected_effect"],
                                  "program": generated["program"], "accepted": result["accepted"],
@@ -81,6 +97,7 @@ async def rehearse(calls: int) -> int:
                 if result["accepted"]:
                     current = generated
             print(json.dumps({"type": "rehearsal_completed", "calls": calls,
+                              "scene_id": scene_id, "baseline_id": baseline_id,
                               "baseline_miou": baseline_metrics["miou"], "best_miou": current["metrics"]["miou"],
                               "baseline_score": baseline_metrics["score"], "best_score": current["metrics"]["score"],
                               "record_ids": [record["id"] for record in records]}), flush=True)

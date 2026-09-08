@@ -100,8 +100,55 @@ class EngineTests(unittest.TestCase):
         self.assertEqual(history, original)
         self.assertEqual(volume.dtype, np.uint8)
 
-    def test_air_at_known_terrain_is_not_hidden(self):
-        np.testing.assert_array_equal(render_map(BASE + "\nerode(level=0)", [0, 1], [1, 0], terrain=1), np.zeros((2, 2), dtype=np.uint8))
+    def test_external_surface_replaces_final_erosion_and_exposes_positive_elevations(self):
+        history = BASE + "\nerode(level=-.25)"
+        # Omitting terrain retains the original clipping behavior. Supplying
+        # terrain declares the actual erosion surface, even above old z=0.
+        np.testing.assert_array_equal(render_map(history, [0, 1], [1, 0]), np.zeros((2, 2), dtype=np.uint8))
+        np.testing.assert_array_equal(render_map(history, [0, 1], [1, 0], terrain=1), np.full((2, 2), 4, dtype=np.uint8))
+        volume = render_volume(history, [0, 2, 0, 2, 0, 2], 2, terrain=1)
+        np.testing.assert_array_equal(volume[0], np.full((2, 2), 4, dtype=np.uint8))
+        np.testing.assert_array_equal(volume[1], np.zeros((2, 2), dtype=np.uint8))
+        # A fixed surface also clips histories that have no erode call.
+        np.testing.assert_array_equal(volume, render_volume(BASE, [0, 2, 0, 2, 0, 2], 2, terrain=1))
+
+    def test_relief_controls_map_exposure_and_volume_air_with_explicit_orientation(self):
+        program = BASE + "\nanticline(x=.2,y=.3,uplift=.8)\nerode(level=0)"
+        history = parse_history(program)
+        original = copy.deepcopy(history)
+        uneroded = copy.deepcopy(history)
+        uneroded["events"].pop()
+        bounds, resolution = [-1, 1, -1, 1, -1, 1], (9, 7, 5)
+        xs = -1 + (np.arange(9) + .5) * 2 / 9
+        ys = -1 + (np.arange(7) + .5) * 2 / 7
+        zs = -1 + (np.arange(5) + .5) * 2 / 5
+        xx, yy = np.meshgrid(xs, ys)
+        terrain = .213 + .3 * xx - .47 * yy
+        self.assertGreater(terrain.max(), 0)
+        self.assertLess(terrain.min(), 0)
+
+        surface_points = np.column_stack([xx.ravel(), yy.ravel(), terrain.ravel() - 1e-8])
+        expected_map = evaluate_points(uneroded, surface_points).reshape(7, 9)
+        np.testing.assert_array_equal(render_map(history, xs, ys, terrain), expected_map)
+        np.testing.assert_array_equal(render_map(history, xs, ys[::-1], terrain[::-1]), expected_map[::-1])
+
+        zz, yyy, xxx = np.meshgrid(zs, ys, xs, indexing="ij")
+        points = np.column_stack([xxx.ravel(), yyy.ravel(), zz.ravel()])
+        expected_volume = evaluate_points(uneroded, points).reshape(5, 7, 9)
+        expected_volume[zz > terrain[None, :, :]] = 0
+        volume = render_volume(history, bounds, resolution, terrain=terrain)
+        np.testing.assert_array_equal(volume, expected_volume)
+        self.assertTrue(np.any((volume > 0) & (zz > 0)))
+        self.assertTrue(np.any((volume == 0) & (zz < 0)))
+        self.assertEqual(history, original)
+
+    def test_terrain_requires_finite_heights_at_matching_sample_locations(self):
+        for terrain in [float("nan"), float("inf"), [[0, 1]], np.zeros((2, 2, 1)), [[0, np.nan], [0, 0]]]:
+            with self.subTest(terrain=terrain):
+                with self.assertRaises(ValueError):
+                    render_map(BASE, [0, 1], [1, 0], terrain=terrain)
+                with self.assertRaises(ValueError):
+                    render_volume(BASE, [0, 2, 0, 2, 0, 2], 2, terrain=terrain)
 
 
 if __name__ == "__main__":

@@ -20,12 +20,16 @@ _ANTICLINE, _TILT, _FAULT, _INTRUSION, _ERODE = 1, 2, 3, 4, 5
 _WIDTH = 16
 
 
-def _pack(history: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+def _pack(history: Any, replace_final_erosion: bool = False) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     history = validate_history(history)
     initial = history["events"][0]
     codes, rows = [], []
-    for event in history["events"][1:]:
+    for index, event in enumerate(history["events"][1:], start=1):
         kind = event["type"]
+        # Observed terrain replaces only the present-day cutoff. Older erosion
+        # remains part of the geological history if the DSL later allows it.
+        if replace_final_erosion and index == len(history["events"]) - 1 and kind == "erode":
+            continue
         p = np.zeros(_WIDTH, dtype=np.float64)
         if kind == "anticline":
             if event["uplift"] == 0:
@@ -149,7 +153,8 @@ def _map_kernel(xs: np.ndarray, ys: np.ndarray, terrain: np.ndarray,
 
 @njit(cache=True, nogil=True)
 def _volume_kernel(bounds: np.ndarray, nx: int, ny: int, nz: int, codes: np.ndarray,
-                   params: np.ndarray, levels: np.ndarray, units: np.ndarray) -> np.ndarray:
+                   params: np.ndarray, levels: np.ndarray, units: np.ndarray,
+                   terrain: np.ndarray, clip_terrain: bool) -> np.ndarray:
     result = np.empty((nz, ny, nx), dtype=np.uint8)
     dx, dy, dz = (bounds[1] - bounds[0]) / nx, (bounds[3] - bounds[2]) / ny, (bounds[5] - bounds[4]) / nz
     for k in range(nz):
@@ -157,6 +162,9 @@ def _volume_kernel(bounds: np.ndarray, nx: int, ny: int, nz: int, codes: np.ndar
         for j in range(ny):
             y = bounds[2] + (j + 0.5) * dy
             for i in range(nx):
+                if clip_terrain and z > terrain[j, i]:
+                    result[k, j, i] = 0
+                    continue
                 x = bounds[0] + (i + 0.5) * dx
                 result[k, j, i] = _label(x, y, z, codes, params, levels, units)
     return result
@@ -173,39 +181,50 @@ def evaluate_points(history: Any, points: Any) -> np.ndarray:
     return _points_kernel(array, *packed)
 
 
+def _terrain_array(terrain: Any, shape: tuple[int, int]) -> np.ndarray:
+    """Validate a caller-aligned height raster; never resample or flip it."""
+    if terrain is None or np.ndim(terrain) == 0:
+        height = 0.0 if terrain is None else float(terrain)
+        if not math.isfinite(height):
+            raise ValueError("terrain must be finite")
+        return np.full(shape, height, dtype=np.float64)
+    elevations = np.ascontiguousarray(terrain, dtype=np.float64)
+    if elevations.shape != shape or not np.isfinite(elevations).all():
+        raise ValueError(f"terrain must have shape {shape} and be finite")
+    return elevations
+
+
 def render_map(history: Any, xs: Any, ys: Any, terrain: Any = None) -> np.ndarray:
     """Sample rock just below the fixed observation surface.
 
     xs and ys are world coordinate vectors, in caller-selected order. Descending
-    ys gives a north-up image. terrain is a scalar or (len(ys), len(xs)) array;
-    None means z=0. Air at the nominated terrain is retained as a mismatch.
+    ys gives a north-up image. An explicit scalar or (len(ys), len(xs)) terrain
+    array is a fixed external surface in world z units (km), replacing only a
+    terminal erode event. It does not move with the geological transformations.
+    None retains the original z=0 observation and all history erosion cutoffs.
+    Air produced by any earlier history event remains air at the surface.
     """
-    packed = _pack(history)
+    packed = _pack(history, replace_final_erosion=terrain is not None)
     xs, ys = np.ascontiguousarray(xs, dtype=np.float64), np.ascontiguousarray(ys, dtype=np.float64)
     if xs.ndim != 1 or ys.ndim != 1 or not len(xs) or not len(ys):
         raise ValueError("xs and ys must be nonempty coordinate vectors")
     if not np.isfinite(xs).all() or not np.isfinite(ys).all() or len(xs) * len(ys) > 4_194_304:
         raise ValueError("Map coordinates must be finite, with at most 2048² samples")
-    shape = (len(ys), len(xs))
-    if terrain is None or np.ndim(terrain) == 0:
-        height = 0.0 if terrain is None else float(terrain)
-        if not math.isfinite(height):
-            raise ValueError("terrain must be finite")
-        elevations = np.full(shape, height, dtype=np.float64)
-    else:
-        elevations = np.ascontiguousarray(terrain, dtype=np.float64)
-        if elevations.shape != shape or not np.isfinite(elevations).all():
-            raise ValueError("terrain must match the map shape and be finite")
+    elevations = _terrain_array(terrain, (len(ys), len(xs)))
     return _map_kernel(xs, ys, elevations, *packed)
 
 
-def render_volume(history: Any, bounds: Any, resolution: Any = 96) -> np.ndarray:
+def render_volume(history: Any, bounds: Any, resolution: Any = 96, terrain: Any = None) -> np.ndarray:
     """Sample voxel centres in a z,y,x array; all volume axes ascend.
 
     bounds=[xmin,xmax,ymin,ymax,zmin,zmax]. resolution is an integer or an
     (nx,ny,nz) tuple. The returned shape is (nz,ny,nx), not (nx,ny,nz).
+    An explicit scalar or (ny,nx) terrain array replaces a terminal erode
+    cutoff and clips voxels above its world-z elevations (km). Array rows and
+    columns must align with ascending y/x voxel centres, unlike north-up maps.
+    None preserves every history cutoff and requires no terrain raster.
     """
-    packed = _pack(history)
+    packed = _pack(history, replace_final_erosion=terrain is not None)
     box = np.ascontiguousarray(bounds, dtype=np.float64)
     if box.shape != (6,) or not np.isfinite(box).all() or any(box[i] >= box[i + 1] for i in (0, 2, 4)):
         raise ValueError("bounds requires six finite values with positive extents")
@@ -219,4 +238,6 @@ def render_volume(history: Any, bounds: Any, resolution: Any = 96) -> np.ndarray
         raise ValueError("resolution must be an integer or (nx,ny,nz)")
     if any(n < 1 or n > 512 for n in sizes) or math.prod(sizes) > 16_777_216:
         raise ValueError("Volume resolution must fit within 256³ total voxels")
-    return _volume_kernel(box, *sizes, *packed)
+    elevations = (_terrain_array(terrain, (sizes[1], sizes[0]))
+                  if terrain is not None else np.empty((0, 0), dtype=np.float64))
+    return _volume_kernel(box, *sizes, *packed, elevations, terrain is not None)

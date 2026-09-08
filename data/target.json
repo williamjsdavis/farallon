@@ -4,29 +4,31 @@
   "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages are retained. Quaternary cover, transparent/outside pixels and colors inconsistent with the legend are unobserved.",
   "bounds": {
     "xmin": 0.0,
-    "xmax": 5.115384615384615,
+    "xmax": 6.0594715221523865,
     "ymin": 0.0,
-    "ymax": 3.8461538461538463
+    "ymax": 4.13872008766662
   },
   "boundsArray": [
     0.0,
-    5.115384615384615,
+    6.0594715221523865,
     0.0,
-    3.8461538461538463
+    4.13872008766662
   ],
   "coordinateSystem": {
     "x": "east",
     "y": "north",
     "z": "up",
     "units": "km",
-    "georeferenced": false,
+    "georeferenced": true,
+    "registrationAccuracy": "approximate printed-figure ticks",
     "origin": "southwest corner of source crop"
   },
   "surface": {
-    "type": "flat",
-    "z": 0.0,
+    "type": "terrain",
+    "file": "data/terrain.npz",
     "units": "km",
-    "schematic": true
+    "heightDatum": "minimum cached USGS DEM elevation",
+    "registration": "approximate"
   },
   "sourceImage": "assets/Geological-map-of-Sheep-Mountain-anticline-The-Bighorn-River-dissects-the-fold.webp",
   "sourceImageSHA256": "df0054eeb1823ee849edc29020d6a75e801d25fff6f0225fc1278674ae6bdbeb",
@@ -47,27 +49,92 @@
     250
   ],
   "scaleCalibration": {
-    "pixelsPerKm": 52.0,
-    "barLengthKm": 1.0,
-    "barEndpointsPixels": [
-      [
-        438,
-        650
-      ],
-      [
-        490,
-        650
-      ]
+    "method": "Manual printed-coordinate tick strokes; independent linear longitude(x) and latitude(y) fits; north-up assumed from map arrow.",
+    "longitudeTicks": [
+      {
+        "pixelX": 64,
+        "longitude": -108.2
+      },
+      {
+        "pixelX": 179,
+        "longitude": -108.16666666666667
+      },
+      {
+        "pixelX": 294,
+        "longitude": -108.13333333333334
+      },
+      {
+        "pixelX": 410,
+        "longitude": -108.1
+      },
+      {
+        "pixelX": 529,
+        "longitude": -108.06666666666666
+      }
     ],
-    "method": "Manual visual reading of the source image's 1 km scale bar; approximate, without map georeferencing."
+    "latitudeTicks": [
+      {
+        "pixelY": 156,
+        "latitude": 44.63333333333333
+      },
+      {
+        "pixelY": 335,
+        "latitude": 44.6
+      }
+    ],
+    "longitudeDegreesPerPixel": 0.0002870945438683289,
+    "longitudeAtPixelX0": -108.21808364268318,
+    "latitudeDegreesPerPixel": -0.0001862197392923749,
+    "latitudeAtPixelY0": 44.66238361266292,
+    "longitudeFitResidualPixels": [
+      1.0115417746598603,
+      -0.09422911252829806,
+      -1.1999999997164563,
+      -1.3057708869181561,
+      1.5884582259385174
+    ],
+    "longitudeFitMaxResidualPixels": 1.5884582259385174,
+    "geographicBounds": {
+      "west": -108.21234175180582,
+      "south": 44.61582867783983,
+      "east": -108.13597460313684,
+      "north": 44.6530726256983
+    },
+    "widthKm": 6.0594715221523865,
+    "heightKm": 4.13872008766662,
+    "horizontalCRS": "EPSG:4326 assumed for DEM request; original figure horizontal datum is unspecified",
+    "localMetricMethod": "WGS84 ellipsoid radii of curvature at crop midpoint latitude; x east and y north from southwest crop corner",
+    "confidence": "Approximate figure registration, not surveyed control. Tick reading, figure distortion, cartographic generalization and unknown original datum remain. Tick-fit residuals do not measure external positional accuracy.",
+    "visualCheck": "Full-map USGS context hillshade has the corresponding NW-SE ridge and Bighorn River canyon; this is a qualitative check, not an independent accuracy measurement.",
+    "legacyScaleBarEstimate": {
+      "pixelsPerKm": 52.0,
+      "barEndpointsPixels": [
+        [
+          438,
+          650
+        ],
+        [
+          490,
+          650
+        ]
+      ],
+      "used": false,
+      "reason": "Replaced with independent horizontal and vertical printed-coordinate calibration; the rough bar estimate is inconsistent with those ticks."
+    }
+  },
+  "geographicBounds": {
+    "west": -108.21234175180582,
+    "south": 44.61582867783983,
+    "east": -108.13597460313684,
+    "north": 44.6530726256983
   },
   "raster": {
     "width": 256,
     "height": 256,
     "order": "rows north to south; columns west to east",
     "sampleLocations": "cell centers",
-    "cellWidthKm": 0.019981971153846152,
-    "cellHeightKm": 0.015024038461538462,
+    "cellWidthKm": 0.02366981063340776,
+    "cellHeightKm": 0.016166875342447734,
     "resampling": "nearest neighbor"
   },
   "palette": [
@@ -254,8 +321,8 @@
   ],
   "provenance": "Source figure supplied by the user. This target was rasterized from that figure, not from the NPS BICA GeoPackage or the Rioux USGS map. No new license is asserted for the source figure.",
   "warnings": [
-    "This is an illustrative map interpretation, not dense ground samples or a surveyed/georeferenced reconstruction.",
-    "The observation surface is held flat at z=0. Real erosion and terrain affect these contacts and will leave residual mismatch.",
+    "This is an illustrative map interpretation, not dense ground samples or a surveyed reconstruction.",
+    "Real USGS 3DEP terrain is registered approximately using printed coordinate ticks. Original map datum, distortion and generalized contacts can cause positional mismatch; see data/TERRAIN.md.",
     "Madison and Amsden occupy very few resolved source pixels in this crop; do not claim precise widths or thicknesses for them.",
     "The source is a compressed raster. A fixed color tolerance masks uncertain, antialiased and annotated pixels; it does not reconstruct geology beneath them.",
     "Triassic, Jurassic and Cretaceous are grouped map packages, not single formations.",

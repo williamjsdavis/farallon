@@ -25,6 +25,7 @@ import type {
   Proposal,
   RunRecord,
   Target,
+  Terrain,
 } from '@/lib/geology-types';
 
 const percent = (v: number) => `${(v * 100).toFixed(1)}%`;
@@ -34,6 +35,9 @@ type Bootstrap = {
   baseline: ModelResult;
   api_key_available: boolean;
   model: string;
+  terrain?: Terrain;
+  scene_id?: string;
+  baseline_id?: string;
 };
 type SessionRun = RunRecord & { origin: 'live' | 'replay' };
 async function request<T>(path: string, body?: unknown): Promise<T> {
@@ -62,6 +66,8 @@ async function request<T>(path: string, body?: unknown): Promise<T> {
 
 export default function Home() {
   const [target, setTarget] = useState<Target>();
+  const [terrain, setTerrain] = useState<Terrain>();
+  const [verticalScale, setVerticalScale] = useState(1);
   const [baseline, setBaseline] = useState<ModelResult>();
   const [best, setBest] = useState<ModelResult>();
   const [selected, setSelected] = useState<ModelResult>();
@@ -107,6 +113,7 @@ export default function Home() {
     request<Bootstrap>('bootstrap')
       .then((data) => {
         setTarget(data.target);
+        setTerrain(data.terrain);
         setBaseline(data.baseline);
         setBest(data.baseline);
         show(data.baseline);
@@ -144,14 +151,16 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           program: best.program,
-          previous: runs
-            .slice(-4)
-            .map((r) => ({
-              headline: r.proposal.headline,
-              program: r.result.program,
-              metrics: r.result.metrics,
-              accepted: r.accepted,
-            })),
+          scene_id: best.scene_id,
+          baseline_id: best.baseline_id,
+          previous: runs.slice(-4).map((r) => ({
+            headline: r.proposal.headline,
+            program: r.result.program,
+            metrics: r.result.metrics,
+            accepted: r.accepted,
+            scene_id: r.scene_id,
+            baseline_id: r.baseline_id,
+          })),
           refine: true,
         }),
       });
@@ -228,6 +237,8 @@ export default function Home() {
     try {
       const result = await request<ModelResult>(refine ? 'refine' : 'render', {
         program,
+        scene_id: best.scene_id,
+        baseline_id: best.baseline_id,
       });
       show(result);
       setMode('manual');
@@ -270,6 +281,8 @@ export default function Home() {
     try {
       const result = await request<ModelResult>('render', {
         program: executable,
+        scene_id: parent.scene_id,
+        baseline_id: parent.baseline_id,
       });
       show(result);
       setAblationParent(parent);
@@ -434,6 +447,9 @@ export default function Home() {
                   <TabsList className="compact-tabs">
                     <TabsTrigger value="units">Units</TabsTrigger>
                     <TabsTrigger value="source">Source</TabsTrigger>
+                    {terrain && (
+                      <TabsTrigger value="terrain">Terrain</TabsTrigger>
+                    )}
                     <TabsTrigger value="error">Mismatch</TabsTrigger>
                   </TabsList>
                 </Tabs>
@@ -441,13 +457,19 @@ export default function Home() {
               <div className="map-pair">
                 <div className="map-frame">
                   <div className="map-caption">
-                    <span>OBSERVED</span>
-                    <span>NW fold nose</span>
+                    <span>
+                      {mapTab === 'terrain' ? 'MEASURED ELEVATION' : 'OBSERVED'}
+                    </span>
+                    <span>
+                      {mapTab === 'terrain' && terrain
+                        ? `${Math.round(terrain.elevation_min_m)}–${Math.round(terrain.elevation_max_m)} m · USGS 3DEP`
+                        : 'NW fold nose'}
+                    </span>
                   </div>
                   <div
                     className="map-image"
                     style={{
-                      aspectRatio: `${target.bounds.xmax / target.bounds.ymax}`,
+                      aspectRatio: `${(target.bounds.xmax - target.bounds.xmin) / (target.bounds.ymax - target.bounds.ymin)}`,
                     }}
                   >
                     <Image
@@ -457,12 +479,23 @@ export default function Home() {
                       src={
                         mapTab === 'source'
                           ? '/api/image/source'
-                          : '/api/image/target'
+                          : mapTab === 'terrain'
+                            ? '/api/image/terrain'
+                            : '/api/image/target'
                       }
-                      alt="Observed geological units at the northwest nose of Sheep Mountain"
+                      alt={
+                        mapTab === 'terrain'
+                          ? 'USGS measured elevation, dark low areas to pale high areas'
+                          : 'Observed geological units at the northwest nose of Sheep Mountain'
+                      }
                     />
                     <span className="north-arrow">↑ N</span>
-                    <div className="scale-bar">
+                    <div
+                      className="scale-bar"
+                      style={{
+                        width: `${100 / (target.bounds.xmax - target.bounds.xmin)}%`,
+                      }}
+                    >
                       <i />1 km
                     </div>
                   </div>
@@ -484,7 +517,7 @@ export default function Home() {
                   <div
                     className={`map-image ${mapTab === 'error' ? 'difference' : ''}`}
                     style={{
-                      aspectRatio: `${target.bounds.xmax / target.bounds.ymax}`,
+                      aspectRatio: `${(target.bounds.xmax - target.bounds.xmin) / (target.bounds.ymax - target.bounds.ymin)}`,
                     }}
                   >
                     <Image
@@ -494,16 +527,21 @@ export default function Home() {
                       src={
                         mapTab === 'error'
                           ? selected.error_image
-                          : selected.observed_map_image
+                          : selected.map_image
                       }
                       alt={
                         mapTab === 'error'
                           ? 'Red pixels show disagreement with observed geology'
-                          : 'Predicted geological surface, masked to the same observed area'
+                          : 'Full predicted geological surface; only observed target pixels contribute to the score'
                       }
                     />
                     <span className="north-arrow">↑ N</span>
-                    <div className="scale-bar">
+                    <div
+                      className="scale-bar"
+                      style={{
+                        width: `${100 / (target.bounds.xmax - target.bounds.xmin)}%`,
+                      }}
+                    >
                       <i />1 km
                     </div>
                   </div>
@@ -514,7 +552,11 @@ export default function Home() {
                 {mapTab === 'error'
                   ? 'Red = mismatch · green = agreement'
                   : `${percent(target.labeledFraction)} of this crop is observed.`}
-                <span>Gaps are excluded from overlap.</span>
+                <span>
+                  {mapTab === 'terrain'
+                    ? 'Printed map coordinates give approximate registration.'
+                    : 'Full prediction shown; gaps excluded from scoring.'}
+                </span>
               </div>
             </div>
             <div className="model-panel panel">
@@ -523,7 +565,19 @@ export default function Home() {
                   <span className="step-number">02</span>
                   <h2>A world that could explain it</h2>
                 </div>
-                <span className="resolution-tag">96³ VOXELS</span>
+                <div className="volume-controls">
+                  <Button
+                    variant="ghost"
+                    size="xs"
+                    onClick={() =>
+                      setVerticalScale((value) => (value === 1 ? 2 : 1))
+                    }
+                    title="Toggle display-only vertical exaggeration; scoring is unchanged"
+                  >
+                    Vertical {verticalScale}×
+                  </Button>
+                  <span className="resolution-tag">96³ VOXELS</span>
+                </div>
               </div>
               <div className="block-stage">
                 <GeologyBlock
@@ -531,16 +585,22 @@ export default function Home() {
                   surfaceImage={selected.map_image}
                   palette={target.palette}
                   cut={cut}
+                  verticalScale={verticalScale}
                 />
                 <div className="block-top-note">
                   <span className="tiny-dot" />{' '}
-                  {counterfactual || 'Generated from executable history'}
+                  {counterfactual ||
+                    (terrain
+                      ? `Real terrain · ${Math.round(terrain.relief_m)} m relief`
+                      : 'Generated from executable history')}
                 </div>
                 <div className="block-hint">Drag to orbit · scroll to zoom</div>
                 <div className="depth-label">
                   1.8 km
                   <br />
-                  <span>BELOW SURFACE</span>
+                  <span>
+                    {terrain ? 'BELOW TERRAIN DATUM' : 'BELOW SURFACE'}
+                  </span>
                 </div>
               </div>
               <div className="cutaway-control">
@@ -562,7 +622,12 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!!busy}
+                  disabled={
+                    !!busy ||
+                    !(ablationParent || selected).history.events.some(
+                      (event) => event.type === 'anticline',
+                    )
+                  }
                   onClick={() => ablate('plunge')}
                 >
                   Remove plunge
@@ -570,7 +635,12 @@ export default function Home() {
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!!busy}
+                  disabled={
+                    !!busy ||
+                    !(ablationParent || selected).history.events.some(
+                      (event) => event.type === 'anticline',
+                    )
+                  }
                   onClick={() => ablate('asymmetry')}
                 >
                   Make symmetric
@@ -616,10 +686,20 @@ export default function Home() {
             <div>
               <span className="metric-label">Contact error</span>
               <strong>
-                {selected.metrics.boundary_error_px.toFixed(1)}
-                <small> px</small>
+                {selected.metrics.prediction_contact_pixels === 0 ? (
+                  '—'
+                ) : (
+                  <>
+                    {selected.metrics.boundary_error_px.toFixed(1)}
+                    <small> px</small>
+                  </>
+                )}
               </strong>
-              <span>Lower is better</span>
+              <span>
+                {selected.metrics.prediction_contact_pixels === 0
+                  ? 'No predicted contacts'
+                  : 'Lower is better'}
+              </span>
             </div>
             <div>
               <span className="metric-label">3D + surface generation</span>
@@ -688,7 +768,7 @@ export default function Home() {
                           ? 'Your program, measured against the map'
                           : mode === 'test'
                             ? counterfactual
-                            : 'Can a simple fold explain these curved outcrops?')}
+                            : 'What deformation is missing from these flat layers?')}
                     </h3>
                     <p>
                       {proposal?.observation ||
@@ -696,7 +776,7 @@ export default function Home() {
                           ? 'This model was generated from the history editor. The displayed measurements compare its surface against the same fixed geological observations.'
                           : mode === 'test'
                             ? 'A single feature was changed from the original model. Compare the outcrop pattern and overlap score to see whether that feature helps explain the map.'
-                            : 'We begin with symmetric layers folded along a straight axis. GPT-6 sees the observed map, the predicted surface, and their mismatch, then writes a revised geological history.')}
+                            : 'We begin with seven horizontal sedimentary packages and no fold. GPT-6 sees the mapped outcrops, real topography, and the mismatch, then writes the missing geological events.')}
                     </p>
                     <div className="testable-effect">
                       <ArrowRight size={15} />
@@ -737,7 +817,9 @@ export default function Home() {
                 <div className="code-panel">
                   <div className="code-caption">
                     <span>history.geo</span>
-                    <span>Oldest → youngest · distances in km</span>
+                    <span>
+                      Oldest → youngest · km relative to terrain datum
+                    </span>
                   </div>
                   <Textarea
                     className="history-editor"
@@ -789,7 +871,7 @@ export default function Home() {
                 >
                   <span className="run-index">00</span>
                   <div>
-                    <strong>Symmetric, non-plunging fold</strong>
+                    <strong>Undeformed sedimentary layers</strong>
                     <small>Starting hypothesis</small>
                   </div>
                   <span>{baseline ? percent(baseline.metrics.miou) : ''}</span>
@@ -851,8 +933,16 @@ export default function Home() {
               </a>
             </span>
             <span>
-              Flat erosion surface · schematic subsurface · a possible history,
-              not a unique reconstruction
+              {terrain ? (
+                <>
+                  <a href={terrain.source.url} target="_blank" rel="noreferrer">
+                    USGS 3DEP terrain ↗
+                  </a>{' '}
+                  · approximate registration ·{' '}
+                </>
+              ) : null}
+              One possible subsurface history · {verticalScale}× vertical
+              display
             </span>
           </footer>
         </>

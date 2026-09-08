@@ -1,0 +1,148 @@
+{
+  "schemaVersion": 1,
+  "title": "Sheep Mountain \u2014 actual USGS 3DEP terrain",
+  "datum_m": 1129.736083984375,
+  "elevation_min_m": 1129.736083984375,
+  "elevation_max_m": 1545.8348388671875,
+  "relief_m": 416.0987548828125,
+  "heightUnits": "km above minimum elevation in cached DEM",
+  "verticalDatum": "Source vertical datum not independently identified for this composite-service export; absolute service elevations are meters. The model uses only relief above the cached minimum.",
+  "source": {
+    "name": "USGS 3D Elevation Program (3DEP) Bare Earth DEM Dynamic Image Service",
+    "url": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer",
+    "productPage": "https://www.usgs.gov/3d-elevation-program/about-3dep-products-services",
+    "exportRequest": "https://elevation.nationalmap.gov/arcgis/rest/services/3DEPElevation/ImageServer/exportImage?bbox=-108.21234175180582%2C44.61582867783983%2C-108.13597460313684%2C44.6530726256983&bboxSR=4326&imageSR=4326&size=256%2C256&format=tiff&pixelType=F32&interpolation=RSP_BilinearInterpolation&adjustAspectRatio=false&f=pjson",
+    "exportParameters": {
+      "bbox": "-108.21234175180582,44.61582867783983,-108.13597460313684,44.6530726256983",
+      "bboxSR": "4326",
+      "imageSR": "4326",
+      "size": "256,256",
+      "format": "tiff",
+      "pixelType": "F32",
+      "interpolation": "RSP_BilinearInterpolation",
+      "adjustAspectRatio": "false",
+      "f": "pjson"
+    },
+    "exportResponseFile": "data/terrain_export.json",
+    "cachedRaster": "data/terrain_source.tif",
+    "cachedRasterSHA256": "a291109443adb900aafc061c23e356cebf9873d91dec277811b2767f5b116ba2",
+    "retrievedDateUTC": "2026-09-08",
+    "access": "Public official service; no API key. USGS 3DEP products are freely available; original geological figure retains its separate provenance."
+  },
+  "registration": {
+    "method": "Manual printed-coordinate tick strokes; independent linear longitude(x) and latitude(y) fits; north-up assumed from map arrow.",
+    "longitudeTicks": [
+      {
+        "pixelX": 64,
+        "longitude": -108.2
+      },
+      {
+        "pixelX": 179,
+        "longitude": -108.16666666666667
+      },
+      {
+        "pixelX": 294,
+        "longitude": -108.13333333333334
+      },
+      {
+        "pixelX": 410,
+        "longitude": -108.1
+      },
+      {
+        "pixelX": 529,
+        "longitude": -108.06666666666666
+      }
+    ],
+    "latitudeTicks": [
+      {
+        "pixelY": 156,
+        "latitude": 44.63333333333333
+      },
+      {
+        "pixelY": 335,
+        "latitude": 44.6
+      }
+    ],
+    "longitudeDegreesPerPixel": 0.0002870945438683289,
+    "longitudeAtPixelX0": -108.21808364268318,
+    "latitudeDegreesPerPixel": -0.0001862197392923749,
+    "latitudeAtPixelY0": 44.66238361266292,
+    "longitudeFitResidualPixels": [
+      1.0115417746598603,
+      -0.09422911252829806,
+      -1.1999999997164563,
+      -1.3057708869181561,
+      1.5884582259385174
+    ],
+    "longitudeFitMaxResidualPixels": 1.5884582259385174,
+    "geographicBounds": {
+      "west": -108.21234175180582,
+      "south": 44.61582867783983,
+      "east": -108.13597460313684,
+      "north": 44.6530726256983
+    },
+    "widthKm": 6.0594715221523865,
+    "heightKm": 4.13872008766662,
+    "horizontalCRS": "EPSG:4326 assumed for DEM request; original figure horizontal datum is unspecified",
+    "localMetricMethod": "WGS84 ellipsoid radii of curvature at crop midpoint latitude; x east and y north from southwest crop corner",
+    "confidence": "Approximate figure registration, not surveyed control. Tick reading, figure distortion, cartographic generalization and unknown original datum remain. Tick-fit residuals do not measure external positional accuracy.",
+    "visualCheck": "Full-map USGS context hillshade has the corresponding NW-SE ridge and Bighorn River canyon; this is a qualitative check, not an independent accuracy measurement.",
+    "legacyScaleBarEstimate": {
+      "pixelsPerKm": 52.0,
+      "barEndpointsPixels": [
+        [
+          438,
+          650
+        ],
+        [
+          490,
+          650
+        ]
+      ],
+      "used": false,
+      "reason": "Replaced with independent horizontal and vertical printed-coordinate calibration; the rough bar estimate is inconsistent with those ticks."
+    }
+  },
+  "geographicBounds": {
+    "west": -108.21234175180582,
+    "south": 44.61582867783983,
+    "east": -108.13597460313684,
+    "north": 44.6530726256983
+  },
+  "bounds": {
+    "xmin": 0.0,
+    "xmax": 6.0594715221523865,
+    "ymin": 0.0,
+    "ymax": 4.13872008766662
+  },
+  "boundsArray": [
+    0.0,
+    6.0594715221523865,
+    0.0,
+    4.13872008766662
+  ],
+  "raster": {
+    "width": 256,
+    "height": 256,
+    "pixelType": "float32",
+    "order": "rows north to south; columns west to east",
+    "sampleLocations": "cell centers; xs ascending, ys descending, identical to target.npz",
+    "cellWidthM": 23.66981063340776,
+    "cellHeightM": 16.166875342447735,
+    "resampling": "USGS server-side bilinear elevation sampling; no geological fitting or analytical terrain approximation",
+    "effectiveResolutionNote": "Export pixel spacing is not a claim about native DEM source resolution or vertical accuracy."
+  },
+  "notes": [
+    "Terrain covers the complete crop, including pixels whose geological label is unobserved.",
+    "No flat-earth replacement, synthetic valley, target-label fitting, nearest fill, or terrain smoothing was used.",
+    "Printed coordinate calibration supersedes the initial rough scale-bar metric extent. Historical flat-surface recordings are a different scene and their scores are not comparable.",
+    "The original map datum and survey accuracy are unknown. Interpret residual contact mismatch with this registration uncertainty in mind.",
+    "A surface match still does not uniquely constrain subsurface structure or geological history."
+  ],
+  "files": {
+    "array": "data/terrain.npz",
+    "metadata": "data/terrain.json",
+    "hillshade": "data/terrain_hillshade.png",
+    "provenance": "data/TERRAIN.md"
+  }
+}

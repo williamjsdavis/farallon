@@ -6,6 +6,8 @@ import base64
 from contextlib import asynccontextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
+from functools import lru_cache
+from hashlib import sha256
 from io import BytesIO
 import json
 import os
@@ -17,7 +19,7 @@ import numpy as np
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from openai import AsyncOpenAI
 from PIL import Image
 from pydantic import BaseModel, Field
@@ -26,20 +28,33 @@ from geology.engine import render_map, render_volume
 from geology.history import HistoryError, history_to_program, parse_history, PARAM_SPECS
 from geology.scoring import MapScorer, mismatch_rgba, prepare_boundary_mask
 from geology.search import refine_history
+from geology.terrain import TerrainGrid
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-6-astra")
 EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "low")
-BASELINE = """# A simple starting hypothesis: symmetric limbs, no plunge.
+BASELINE = """# Start before deformation: seven horizontal sedimentary packages.
 strata(levels=[-1.2, -1.05, -0.92, -0.78, -0.5, -0.2], units=[1, 2, 3, 4, 5, 6, 7])
-anticline(x=3.2, y=1.0, azimuth=135, uplift=1.3, dip_ne=30, dip_sw=30, hinge=0.15, nw_length=1.0, se_length=3.0, plunge_nw=0, plunge_se=0)
 erode(level=0)
 """
 TARGET = np.load(ROOT / "data/target.npz")
 META = json.loads((ROOT / "data/target.json").read_text())
 LABELS, MASK = TARGET["labels"], TARGET["mask"]
 XS, YS = TARGET["xs"], TARGET["ys"]
+TERRAIN_GRID = TerrainGrid.from_npz(ROOT / "data/terrain.npz")
+TERRAIN_META = json.loads((ROOT / "data/terrain.json").read_text())
+HEIGHTS = TERRAIN_GRID.sample(XS, YS)
+HEIGHTS.setflags(write=False)
+# Observations, terrain and model semantics define a comparable scoring scene.
+# Replays from the original flat experiment remain archived, not rescored.
+scene_hash = sha256(b"farallon-terrain-v2-paired-contacts-v1")
+for array in (LABELS, MASK, TARGET["exclusion_reasons"], XS, YS, HEIGHTS):
+    scene_hash.update(np.ascontiguousarray(array).tobytes())
+SCENE_ID = "sheep-" + scene_hash.hexdigest()[:16]
+BASELINE_ID = sha256(json.dumps(parse_history(BASELINE), sort_keys=True).encode()).hexdigest()[:16]
+META["surface"] = {"type": "USGS 3DEP terrain", "units": "km", "fixed": True,
+                   "datum_m": TERRAIN_META["datum_m"], "scene_id": SCENE_ID}
 BOUNDARY_MASK = prepare_boundary_mask(MASK, TARGET["exclusion_reasons"])
 SCORER = MapScorer(LABELS, MASK, BOUNDARY_MASK)
 PALETTE = np.zeros((256, 4), dtype=np.uint8)
@@ -61,13 +76,46 @@ def file_url(path: Path) -> str:
     return f"data:image/{suffix};base64," + base64.b64encode(path.read_bytes()).decode()
 
 
+def terrain_image() -> str:
+    height = (HEIGHTS - HEIGHTS.min()) / max(float(np.ptp(HEIGHTS)), 1e-9)
+    low, high = np.array([47, 71, 78]), np.array([238, 219, 173])
+    rgb = low[None, None, :] + height[:, :, None] * (high - low)[None, None, :]
+    dy, dx = np.gradient(HEIGHTS, YS, XS)
+    light = np.clip((1 + 0.5 * dx - 0.5 * dy) / np.sqrt(1 + dx * dx + dy * dy) / np.sqrt(1.5), 0, 1)
+    rgb *= (0.5 + 0.5 * light[:, :, None])
+    return png_url(np.dstack([np.clip(rgb, 0, 255).astype(np.uint8), np.full(HEIGHTS.shape, 255, np.uint8)]))
+
+
+TERRAIN_IMAGE = terrain_image()
+
+
+@lru_cache(maxsize=8)
+def volume_terrain(resolution: int) -> tuple[np.ndarray, list[float], dict]:
+    b = META["bounds"]
+    xs = np.linspace(b["xmin"], b["xmax"], resolution + 1)
+    ys = np.linspace(b["ymin"], b["ymax"], resolution + 1)
+    centers = TERRAIN_GRID.sample((xs[:-1] + xs[1:]) / 2, (ys[:-1] + ys[1:]) / 2)
+    vertices = TERRAIN_GRID.sample(xs, ys).astype("<f4")
+    bounds = [b["xmin"], b["xmax"], b["ymin"], b["ymax"], -1.8,
+              max(0.1, float(HEIGHTS.max()) + 0.03)]
+    surface = {"shape": list(vertices.shape), "encoding": "float32-le", "order": "south-to-north",
+               "data": base64.b64encode(vertices.tobytes()).decode()}
+    return centers, bounds, surface
+
+
+def check_scene(scene_id: str | None, baseline_id: str | None = None):
+    if ((scene_id is not None and scene_id != SCENE_ID) or
+            (baseline_id is not None and baseline_id != BASELINE_ID)):
+        raise HTTPException(409, "The terrain or starting history has changed. Reload the demo to use the current scene.")
+
+
 def canonical(program: str) -> dict:
     history = parse_history(program)
     # Unit identities and the observation surface are data, not fit parameters.
     if history["events"][0]["units"] != list(range(1, 8)):
         raise HistoryError("Keep the seven observed unit IDs in their original order.")
     if history["events"][-1]["type"] != "erode" or history["events"][-1]["level"] != 0:
-        raise HistoryError("The observation surface is fixed: end with erode(level=0).")
+        raise HistoryError("The measured terrain is fixed: end with erode(level=0) for zero terrain offset.")
     if len(history["events"]) > 8:
         raise HistoryError("Use at most eight events for this demonstration.")
     if any(e["type"] == "intrusion" for e in history["events"]):
@@ -77,23 +125,23 @@ def canonical(program: str) -> dict:
 
 def render_result(history: dict, volume: bool = True, resolution: int = 96) -> dict:
     started = perf_counter()
-    prediction = render_map(history, XS, YS)
+    prediction = render_map(history, XS, YS, terrain=HEIGHTS)
     map_ms = (perf_counter() - started) * 1000
     score_start = perf_counter()
     metrics = SCORER(prediction)
     score_ms = (perf_counter() - score_start) * 1000
     payload: dict = {
-        "id": uuid4().hex[:12], "program": history_to_program(history),
+        "id": uuid4().hex[:12], "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
+        "program": history_to_program(history),
         "history": history, "metrics": metrics,
     }
     volume_ms = 0.0
     if volume:
-        b = META["bounds"]
-        bounds = [b["xmin"], b["xmax"], b["ymin"], b["ymax"], -1.8, 0.0]
+        terrain, bounds, surface = volume_terrain(resolution)
         volume_start = perf_counter()
-        labels = render_volume(history, bounds, resolution)
+        labels = render_volume(history, bounds, resolution, terrain=terrain)
         volume_ms = (perf_counter() - volume_start) * 1000
-        payload["volume"] = {"bounds": bounds, "shape": list(labels.shape),
+        payload["volume"] = {"bounds": bounds, "shape": list(labels.shape), "surface": surface,
                              "data": base64.b64encode(labels.tobytes()).decode()}
     encode_start = perf_counter()
     rgba = PALETTE[prediction].copy()
@@ -126,28 +174,37 @@ class RenderRequest(BaseModel):
     program: str = Field(max_length=24000)
     volume: bool = True
     resolution: int = Field(default=96, ge=32, le=128)
+    scene_id: str | None = None
+    baseline_id: str | None = None
 
 
 class IterationRequest(BaseModel):
     program: str = Field(max_length=24000)
     previous: list[dict] = Field(default_factory=list, max_length=12)
     refine: bool = True
+    scene_id: str | None = None
+    baseline_id: str | None = None
 
 
 @app.get("/api/health")
 def health():
     return {"ok": True, "model": MODEL, "reasoning_effort": EFFORT,
+            "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
             "api_key_available": bool(os.getenv("OPENAI_API_KEY")), "warmup_ms": WARMUP_MS}
 
 
 @app.get("/api/bootstrap")
 async def bootstrap():
     return {"target": META, "model": MODEL, "api_key_available": bool(os.getenv("OPENAI_API_KEY")),
+            "scene_id": SCENE_ID, "baseline_id": BASELINE_ID, "terrain": TERRAIN_META,
+            "baseline_name": "Undeformed sedimentary layers",
             "baseline": await asyncio.to_thread(render_result, canonical(BASELINE))}
 
 
 @app.get("/api/image/{name}")
 def image_file(name: str):
+    if name == "terrain":
+        return Response(base64.b64decode(TERRAIN_IMAGE.split(",", 1)[1]), media_type="image/png")
     files = {"target": ROOT / "data/target.png", "source": ROOT / "data/target_source.png",
              "full": ROOT / META["sourceImage"], "mask": ROOT / "data/target_mask.png"}
     if name not in files:
@@ -157,6 +214,7 @@ def image_file(name: str):
 
 @app.post("/api/render")
 async def render(request: RenderRequest):
+    check_scene(request.scene_id, request.baseline_id)
     try:
         history = canonical(request.program)
         return await asyncio.to_thread(render_result, history, request.volume, request.resolution)
@@ -166,11 +224,12 @@ async def render(request: RenderRequest):
 
 @app.post("/api/refine")
 async def refine(request: IterationRequest):
+    check_scene(request.scene_id, request.baseline_id)
     try:
         history = canonical(request.program)
         result, _, evaluations, elapsed_ms = await asyncio.to_thread(
             refine_history, history, LABELS, XS, YS, MASK, budget=160, seconds=3.0,
-            boundary_mask=BOUNDARY_MASK)
+            boundary_mask=BOUNDARY_MASK, terrain=HEIGHTS)
         payload = await asyncio.to_thread(render_result, result)
         payload["search"] = {"evaluations": evaluations, "elapsed_ms": elapsed_ms}
         return payload
@@ -186,12 +245,17 @@ Distinguish visual evidence from geological inference. Be specific about WHERE a
 Prefer one meaningful hypothesis revision at a time. You may adjust parameters, add a second
 fold, or revise an event order when justified. Do not just repeat an earlier rejected proposal.
 Do not invent a visible fault from fold-axis arrows or the river. Do not repaint or relabel units.
-Map exposure does not uniquely determine the subsurface. The terrain is flat/schematic;
-erosional irregularities and extremely thin source units may remain unexplained.
+Map exposure does not uniquely determine the subsurface. The supplied fixed USGS elevation
+grid is real topography, approximately registered from printed map coordinates. Its valleys
+and ridges affect the exposed units. Extremely thin source units may remain unexplained.
+The starting program has only undeformed strata: add missing deformation if the observed
+outcrop geometry calls for it. A numerical optimizer cannot add a geological event for you.
 
 DSL: one call per event, oldest to youngest, only literal keyword arguments, no imports,
 assignments, loops, expressions, or function definitions. Begin with strata and end with
-erode(level=0). Units must remain [1,2,3,4,5,6,7], oldest to youngest. Preserve all seven.
+erode(level=0). This final event intersects rocks with the fixed measured terrain; level=0
+means ZERO OFFSET to that terrain, not a horizontal plane. Units must remain
+[1,2,3,4,5,6,7], oldest to youngest. Preserve all seven.
 strata(levels=[six strictly increasing contact elevations in km], units=[1,2,3,4,5,6,7])
 anticline(x=..., y=..., azimuth=..., uplift=..., dip_ne=..., dip_sw=..., hinge=...,
           nw_length=..., se_length=..., plunge_nw=..., plunge_se=...)
@@ -200,7 +264,9 @@ fault(x=...,y=...,z=...,azimuth=...,dip=...,slip=...)
 erode(level=0)
 At most 8 events. Strata extend infinitely before final erosion. Effective VERTICAL contact
 intervals are fitted, not measured normal bed thicknesses. Oldest unit occupies z below
-the lowest level; youngest above the highest. Keep the highest level below zero when needed.
+the lowest level; youngest above the highest. Elevations are km relative to the terrain's
+minimum elevation, provided as datum_m. Terrain lies at or above z=0. Raise fold uplift
+enough to expose older units at the actual nonzero ground elevation. Do not move the terrain.
 
 Anticline semantics: x east, y north, z up, distances km. Azimuth clockwise from north is
 the SE-directed axis, typically in the vicinity of135 degrees. Local v points along this axis;
@@ -229,12 +295,16 @@ async def propose(request: IterationRequest, current: dict) -> dict:
             "legend": [{k: e[k] for k in ("id", "name", "color", "age")} for e in META["palette"]],
             "observed_fraction": META["labeledFraction"], "current_program": request.program,
             "current_metrics": current["metrics"], "parameter_bounds": PARAM_SPECS,
-            "recent_attempts": request.previous[-4:]}
+            "terrain": {"source": TERRAIN_META["source"], "datum_m": TERRAIN_META["datum_m"],
+                        "min_z_km": float(HEIGHTS.min()), "max_z_km": float(HEIGHTS.max()),
+                        "height_samples_5x5_north_up_km": HEIGHTS[np.ix_(np.linspace(0,len(YS)-1,5).astype(int), np.linspace(0,len(XS)-1,5).astype(int))].round(4).tolist()},
+            "recent_attempts": [p for p in request.previous if p.get("scene_id") == SCENE_ID and p.get("baseline_id") == BASELINE_ID][-4:]}
     images = [
         ("Original map with legend; only the NW crop is scored:", file_url(ROOT / META["sourceImage"])),
         ("Clean observed NW target; transparent gaps are unobserved. Same bounds as prediction:", file_url(ROOT / "data/target.png")),
         ("Current predicted surface, same north-up frame and geological colors:", current["map_image"]),
         ("Disagreement overlay: red is mismatch; green is agreement; transparent is unobserved:", current["error_image"]),
+        ("Fixed USGS terrain in the same frame: dark teal is low elevation, pale yellow is high; shading indicates relief:", TERRAIN_IMAGE),
     ]
     content: list[dict] = [{"type": "input_text", "text": json.dumps(info)}]
     for label, url in images:
@@ -261,6 +331,7 @@ async def propose(request: IterationRequest, current: dict) -> dict:
 
 @app.post("/api/iterate")
 async def iterate(request: IterationRequest):
+    check_scene(request.scene_id, request.baseline_id)
     try:
         original = canonical(request.program)
     except HistoryError as exc:
@@ -287,10 +358,12 @@ async def iterate(request: IterationRequest):
                     candidate, _, evaluations, search_ms = await asyncio.to_thread(
                         refine_history, candidate, LABELS, XS, YS, MASK, budget=192, seconds=3.0,
                         seed=len(request.previous), allowed_fields=proposal["parameters_to_refine"][:10],
-                        boundary_mask=BOUNDARY_MASK)
+                        boundary_mask=BOUNDARY_MASK, terrain=HEIGHTS)
                 result = await asyncio.to_thread(render_result, candidate)
                 accepted = result["metrics"]["score"] > current["metrics"]["score"] + 1e-6
                 record = {"proposal": proposal, "result": result, "accepted": accepted,
+                          "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
+                          "before_program": history_to_program(original),
                           "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                           "before": current["metrics"], "model_ms": llm_ms,
                           "search": {"evaluations": evaluations, "elapsed_ms": search_ms},
@@ -313,6 +386,8 @@ def runs():
     records = []
     for path in (ROOT / "data/runs").glob("*.json"):
         record = json.loads(path.read_text())
+        if record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID:
+            continue
         try:
             recorded_at = datetime.fromisoformat(record["recorded_at"])
             if recorded_at.tzinfo is None:
@@ -333,4 +408,7 @@ def replay(run_id: str):
     path = ROOT / "data/runs" / f"{run_id}.json"
     if not path.exists():
         raise HTTPException(404)
-    return json.loads(path.read_text())
+    record = json.loads(path.read_text())
+    if record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID:
+        raise HTTPException(409, "This recording belongs to an earlier terrain or starting history. Use the current scene's recordings.")
+    return record
