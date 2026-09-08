@@ -11,6 +11,8 @@ type SceneState = {
   controls: OrbitControls;
   block: THREE.Group;
   grid: THREE.GridHelper;
+  surfaceTexture: THREE.Texture | null;
+  surfaceImage: string | null;
 };
 function webglUnavailable(container: HTMLDivElement) {
   const message = document.createElement('p');
@@ -20,7 +22,7 @@ function webglUnavailable(container: HTMLDivElement) {
   container.replaceChildren(message);
   return () => message.remove();
 }
-function disposeGroup(group: THREE.Group) {
+function disposeGroup(group: THREE.Group, sharedTexture: THREE.Texture | null) {
   group.traverse((object) => {
     const mesh = object as THREE.Mesh;
     mesh.geometry?.dispose();
@@ -28,7 +30,8 @@ function disposeGroup(group: THREE.Group) {
       for (const material of Array.isArray(mesh.material)
         ? mesh.material
         : [mesh.material]) {
-        (material as THREE.MeshBasicMaterial).map?.dispose();
+        const map = (material as THREE.MeshBasicMaterial).map;
+        if (map !== sharedTexture) map?.dispose();
         material.dispose();
       }
   });
@@ -90,7 +93,16 @@ export function GeologyBlock({
     (grid.material as THREE.Material).transparent = true;
     (grid.material as THREE.Material).opacity = 0.48;
     scene.add(grid);
-    state.current = { renderer, camera, controls, block, grid };
+    const context: SceneState = {
+      renderer,
+      camera,
+      controls,
+      block,
+      grid,
+      surfaceTexture: null,
+      surfaceImage: null,
+    };
+    state.current = context;
     const resize = () => {
       const { width, height } = container.getBoundingClientRect();
       renderer.setSize(width, height);
@@ -111,7 +123,9 @@ export function GeologyBlock({
       cancelAnimationFrame(frame);
       observer.disconnect();
       controls.dispose();
-      disposeGroup(block);
+      disposeGroup(block, context.surfaceTexture);
+      context.surfaceTexture?.dispose();
+      context.surfaceTexture = null;
       grid.geometry.dispose();
       (grid.material as THREE.Material).dispose();
       renderer.dispose();
@@ -124,8 +138,21 @@ export function GeologyBlock({
     const context = state.current;
     if (!context) return;
     const { block, grid } = context;
-    disposeGroup(block);
-    let disposed = false;
+    // Rebuilding a cut is synchronous, but decoding its image is not. Keep
+    // the loaded surface texture alive across cuts to avoid untextured frames.
+    disposeGroup(block, context.surfaceTexture);
+    if (!context.surfaceTexture || context.surfaceImage !== surfaceImage) {
+      context.surfaceTexture?.dispose();
+      const surface = new THREE.TextureLoader().load(surfaceImage, (map) => {
+        if (state.current !== context || context.surfaceTexture !== map)
+          map.dispose();
+      });
+      surface.colorSpace = THREE.SRGBColorSpace;
+      surface.magFilter = THREE.NearestFilter;
+      surface.minFilter = THREE.NearestFilter;
+      context.surfaceTexture = surface;
+      context.surfaceImage = surfaceImage;
+    }
     const [nz, ny, nx] = volume.shape;
     const [xmin, xmax, ymin, ymax, zmin, zmax] = volume.bounds;
     const startY = Math.min(ny - 2, Math.floor(cut * ny));
@@ -278,17 +305,11 @@ export function GeologyBlock({
       shading.push(brightness, brightness, brightness);
     }
     cap.setAttribute('color', new THREE.Float32BufferAttribute(shading, 3));
-    const surface = new THREE.TextureLoader().load(surfaceImage, (map) => {
-      if (disposed) map.dispose();
-    });
-    surface.colorSpace = THREE.SRGBColorSpace;
-    surface.magFilter = THREE.NearestFilter;
-    surface.minFilter = THREE.NearestFilter;
     block.add(
       new THREE.Mesh(
         cap,
         new THREE.MeshBasicMaterial({
-          map: surface,
+          map: context.surfaceTexture,
           vertexColors: true,
           side: THREE.DoubleSide,
           alphaTest: 0.1,
@@ -338,9 +359,6 @@ export function GeologyBlock({
         }),
       ),
     );
-    return () => {
-      disposed = true;
-    };
   }, [volume, surfaceImage, palette, cut, bytes, heights, verticalScale]);
   return (
     <div
