@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "source": "assets/Geological-map-of-Sheep-Mountain-anticline-The-Bighorn-River-dissects-the-fold.webp",
   "sourceSHA256": "df0054eeb1823ee849edc29020d6a75e801d25fff6f0225fc1278674ae6bdbeb",
   "sourceImageDimensions": [
@@ -810,40 +810,156 @@
         ],
         "euclideanDifference": 2.23606797749979
       }
+    },
+    {
+      "id": 8,
+      "name": "Quaternary",
+      "age": "Quaternary",
+      "currentRGB": [
+        251,
+        240,
+        141
+      ],
+      "recommendedRGB": [
+        251,
+        240,
+        141
+      ],
+      "recommendedHex": "#fbf08d",
+      "legendSampleLTRB": [
+        13,
+        462,
+        32,
+        470
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          251.0,
+          240.0,
+          141.0
+        ],
+        "modeRGB": [
+          251,
+          240,
+          139
+        ],
+        "modeCount": 33,
+        "p10RGB": [
+          249.0,
+          237.0,
+          139.0
+        ],
+        "p90RGB": [
+          251.0,
+          240.0,
+          144.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 5935,
+      "nativeCropInterior": {
+        "count": 4846,
+        "medianRGB": [
+          251.0,
+          240.0,
+          139.0
+        ],
+        "modeRGB": [
+          251,
+          240,
+          139
+        ],
+        "modeCount": 2115,
+        "p10RGB": [
+          249.0,
+          239.0,
+          137.0
+        ],
+        "p90RGB": [
+          252.0,
+          241.0,
+          142.0
+        ]
+      },
+      "targetPixels": 7290,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          718,
+          141,
+          725
+        ],
+        "count": 133,
+        "medianRGB": [
+          250.0,
+          240.0,
+          139.0
+        ],
+        "modeRGB": [
+          250,
+          240,
+          139
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          250.0,
+          240.0,
+          139.0
+        ],
+        "p90RGB": [
+          250.0,
+          240.0,
+          139.0
+        ],
+        "currentMinusMedian": [
+          1.0,
+          0.0,
+          2.0
+        ],
+        "euclideanDifference": 2.23606797749979
+      }
     }
   ],
   "recommendation": "Retain the existing RGB palette: every entry equals its source WEBP legend median. Display gaps and contact width dominate the visual difference; do not change labels or masks to improve appearance.",
-  "recommendedDisplayStyle": "C: canonical observed interiors with source linework/Quaternary context, and independently antialiased predicted unit contacts. Keep raw predicted images and scoring arrays separate.",
+  "recommendedDisplayStyle": "C: canonical observed interiors for all eight units, including yellow Quaternary, with unscored source linework context and independently antialiased predicted unit contacts. Keep raw predicted images and scoring arrays separate.",
   "displayFindings": [
-    "A paints all missing observations near-black, including yellow Quaternary, and heavily obscures the narrow mapped core.",
+    "A paints remaining missing observations near-black and heavily obscures the narrow mapped core. Yellow Quaternary is now an observed class in every style.",
     "B fills 5292 one-pixel display gaps (8.07% of the raster) but does not recover reliable observations of the thin units. Its benefit remains modest at 320-pixel app-panel width.",
-    "C most closely matches the supplied cartography without inventing covered geology. The source-like image contains context that is not part of the score; disclose that distinction.",
+    "C most closely matches the supplied cartography without inventing subsurface geology. Remaining masked source linework and annotations provide unscored context; yellow Quaternary pixels are scored observations.",
     "Render the antialiased cartographic prediction with normal image sampling, not CSS image-rendering:pixelated, to keep subpixel contacts continuous at actual panel size.",
     "Madison has 147 and Amsden 195 scored target pixels. Their native crop interiors (>1.5px from class edges) contain only 1 and 16 pixels; apparent width is not reliable evidence for precise geological thickness."
   ],
   "prediction": {
-    "record": "data/runs/be7c9c996629.json",
+    "record": "data/runs/7c831dafaef5.json",
     "sceneId": "sheep-023fcbb758811c9a",
-    "program": "strata(levels=[-1.110192034028927, -1.011935755473623, -0.8638220786754812, -0.6884639339690292, -0.4671130972860516, 0.10362116074247105], units=[1, 2, 3, 4, 5, 6, 7])\nanticline(x=3.7, y=1.35, azimuth=127.02712901675295, uplift=1.452, dip_ne=62.712566847213395, dip_sw=42.75, hinge=0.04670750729373527, nw_length=1.4004853443772263, se_length=4.0, plunge_nw=12.95438469433989, plunge_se=0.0)\nerode(level=0.0)",
+    "program": "strata(levels=[-1.4143425787511934, -1.2513882178449762, -1.1076681040699097, -0.7528279377447277, -0.5576614536286925, 0.10161169915799302], units=[1, 2, 3, 4, 5, 6, 7])\nanticline(x=2.995205500361359, y=1.6892219442305396, azimuth=129.7473340209431, uplift=1.4560271978588801, dip_ne=54.005701159, dip_sw=47.97207514490654, hinge=0.23487710341540474, nw_length=0.0, se_length=4.5, plunge_nw=11.163085184342656, plunge_se=8.0)\nanticline(x=2.24, y=2.48, azimuth=124.0, uplift=0.49312, dip_ne=85.0, dip_sw=56.0, hinge=0.063, nw_length=0.0, se_length=2.25, plunge_nw=27.5, plunge_se=12.0)\nerode(level=0.0)",
     "metrics": {
-      "miou": 0.5231756384607175,
-      "accuracy": 0.8134520095430354,
-      "boundary_error_px": 22.159515437345096,
-      "score": 0.46158037727528106,
+      "miou": 0.5986249212198265,
+      "accuracy": 0.8727060011011195,
+      "boundary_error_px": 14.504604202206616,
+      "score": 0.5520708052638954,
       "per_unit": {
-        "1": 0.775,
-        "2": 0.15127175368139223,
-        "3": 0.3149946062567422,
-        "4": 0.3175375502432833,
-        "5": 0.532344793873228,
-        "6": 0.814712918660287,
-        "7": 0.7563678465100894
+        "1": 0.543046357615894,
+        "2": 0.28493150684931506,
+        "3": 0.569937369519833,
+        "4": 0.5100870673179019,
+        "5": 0.5189912348147009,
+        "6": 0.8704755721473787,
+        "7": 0.8929053402737613
       },
       "evaluated_pixels": 43592,
       "target_contact_pixels": 2952,
-      "prediction_contact_pixels": 4759
+      "prediction_contact_pixels": 3469
     },
-    "selection": "Highest combined score among saved records in this scene, unless --record is provided."
+    "selection": "Explicit --record, or the highest archived combined score in the original seven-unit bedrock scene; used only to compare display styles.",
+    "metricsScope": "Recorded metrics apply only to the record's own scene. They are not recomputed against the current eight-unit target and must not be compared with current target scores.",
+    "scoredAgainstCurrentTarget": false
   },
   "styles": {
     "A": {
@@ -853,7 +969,7 @@
         34
       ],
       "predictedContactWidthTargetPixels": 1.0,
-      "caveat": "Black missing-data gaps resemble geological linework and can conceal very thin units. This treatment merges cover and uncertainty visually."
+      "caveat": "Black missing-data gaps resemble geological linework and can conceal very thin units. Quaternary remains a separately colored observed unit."
     },
     "B": {
       "displayFillPixels": 5292,
@@ -868,7 +984,7 @@
       "caveat": "Interpolated color is not a geological observation. Keep scoring mask and explicit display-fill note."
     },
     "C": {
-      "gapRule": "Source WEBP colors retained where target unobserved; pale outside, source yellow cover and dark printed linework.",
+      "gapRule": "Source WEBP colors retained where target unobserved; pale outside and dark printed linework. Yellow Quaternary is an observed unit with canonical RGB, not a display fill.",
       "predictedContactRGB": [
         44,
         43,
@@ -882,56 +998,62 @@
   "thinUnitContourAudit": [
     {
       "id": 1,
-      "predictedPixels": 1222,
-      "aContourPixels": 234,
-      "aContourFraction": 0.19148936170212766
+      "predictedPixels": 948,
+      "aContourPixels": 126,
+      "aContourFraction": 0.13291139240506328
     },
     {
       "id": 2,
-      "predictedPixels": 2453,
-      "aContourPixels": 554,
-      "aContourFraction": 0.2258459029759478
+      "predictedPixels": 1674,
+      "aContourPixels": 347,
+      "aContourFraction": 0.2072879330943847
     },
     {
       "id": 3,
-      "predictedPixels": 3517,
-      "aContourPixels": 709,
-      "aContourFraction": 0.20159226613591127
+      "predictedPixels": 3163,
+      "aContourPixels": 498,
+      "aContourFraction": 0.1574454631678786
     },
     {
       "id": 4,
-      "predictedPixels": 4500,
-      "aContourPixels": 829,
-      "aContourFraction": 0.18422222222222223
+      "predictedPixels": 6515,
+      "aContourPixels": 733,
+      "aContourFraction": 0.11250959324635457
     },
     {
       "id": 5,
-      "predictedPixels": 6746,
-      "aContourPixels": 883,
-      "aContourFraction": 0.13089238067002668
+      "predictedPixels": 7365,
+      "aContourPixels": 841,
+      "aContourFraction": 0.1141887304820095
     },
     {
       "id": 6,
-      "predictedPixels": 34525,
-      "aContourPixels": 1023,
-      "aContourFraction": 0.02963070238957277
+      "predictedPixels": 35189,
+      "aContourPixels": 705,
+      "aContourFraction": 0.020034669925260734
     },
     {
       "id": 7,
-      "predictedPixels": 12573,
-      "aContourPixels": 436,
-      "aContourFraction": 0.03467748349638113
+      "predictedPixels": 10682,
+      "aContourPixels": 189,
+      "aContourFraction": 0.017693315858453473
+    },
+    {
+      "id": 8,
+      "predictedPixels": 0,
+      "aContourPixels": 0,
+      "aContourFraction": null
     }
   ],
-  "fixedObservationPixels": 43592,
-  "fixedObservationFraction": 0.6651611328125,
-  "targetNPZSHA256": "9e204840381639172c4530763c41979ccd8baf08d4fa5dae8caedf1412e9f479",
+  "fixedObservationPixels": 50882,
+  "fixedObservationFraction": 0.776397705078125,
+  "targetNPZSHA256": "4f7b6039e5a590fa12b0764345060b8137068d7a8681fe403d62878c7d83cd6e",
   "targetInputsUnchanged": true,
-  "labelsSHA256": "3f4e465a4764b623f2fcae26a300679030a0bba48e9f1a9b14d081be29170477",
-  "maskSHA256": "c7982b98e39e8a1e0dc50701e6d11d35b67f7eb545b4c70f1e53bb2c9f1ce170",
+  "labelsSHA256": "1f9beb9dd078e07af4c155e245dd0bb9432829b424462ae179f0f5f15508a4fb",
+  "maskSHA256": "89596e9ec1243ebcc62622577c0321b1a5c5033c8a14af27b27f682518cacfb4",
   "sourceUnchanged": true,
   "pdfComparison": {
-    "renderPath": "/tmp/farallon-fiore-inspect-1-page-1.png",
+    "renderPath": "/private/tmp/farallon-fiore-inspect-1-page-1.png",
     "renderSHA256": "61c2f37ed09e85573fb6a1607268ba99a5f7a8486e7945ab81cf2b6840070997",
     "renderDimensions": [
       1500,

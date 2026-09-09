@@ -1,7 +1,7 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "title": "Sheep Mountain \u2014 northwestern fold nose",
-  "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages are retained. Quaternary cover, transparent/outside pixels and colors inconsistent with the legend are unobserved.",
+  "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages and mapped young Quaternary surface deposits are observed as eight distinct units. Transparent/outside pixels and colors inconsistent with the legend remain unobserved.",
   "bounds": {
     "xmin": 0.0,
     "xmax": 6.0594715221523865,
@@ -256,6 +256,23 @@
         32,
         493
       ]
+    },
+    {
+      "id": 8,
+      "name": "Quaternary",
+      "color": "#fbf08d",
+      "rgb": [
+        251,
+        240,
+        141
+      ],
+      "age": "Quaternary",
+      "legendSample": [
+        13,
+        462,
+        32,
+        470
+      ]
     }
   ],
   "unobserved": {
@@ -263,8 +280,8 @@
     "name": "Unobserved / masked",
     "color": "#00000000"
   },
-  "labeledFraction": 0.6651611328125,
-  "labeledPixels": 43592,
+  "labeledFraction": 0.776397705078125,
+  "labeledPixels": 50882,
   "totalPixels": 65536,
   "classCounts": {
     "1": 147,
@@ -273,7 +290,8 @@
     "4": 3484,
     "5": 4541,
     "6": 23832,
-    "7": 9482
+    "7": 9482,
+    "8": 7290
   },
   "classFractions": {
     "1": 0.0022430419921875,
@@ -282,11 +300,12 @@
     "4": 0.05316162109375,
     "5": 0.0692901611328125,
     "6": 0.3636474609375,
-    "7": 0.144683837890625
+    "7": 0.144683837890625,
+    "8": 0.111236572265625
   },
   "excludedCounts": {
     "transparentOrOutside": 100,
-    "quaternaryCover": 7290,
+    "quaternaryCover": 0,
     "lineworkAnnotationsOrUncertainColor": 14554
   },
   "classification": {
@@ -297,13 +316,15 @@
       240,
       141
     ],
+    "quaternaryUnitId": 8,
+    "quaternaryObserved": true,
     "requireOpaqueSource": true,
     "maskFixedAcrossCandidates": true,
     "interpolateAcrossMasks": false,
     "exclusionReasonCodes": {
-      "0": "observed bedrock",
+      "0": "observed geological unit, including Quaternary deposits",
       "1": "transparent/outside",
-      "2": "Quaternary cover",
+      "2": "reserved legacy code: excluded Quaternary cover; unused in this export",
       "3": "linework, annotation, or uncertain compressed color"
     }
   },
@@ -327,6 +348,7 @@
     "The source is a compressed raster. A fixed color tolerance masks uncertain, antialiased and annotated pixels; it does not reconstruct geology beneath them.",
     "Triassic, Jurassic and Cretaceous are grouped map packages, not single formations.",
     "The mapped arrowed axes represent folds, not evidence of an exposed surface fault.",
+    "A mapped fold axis crossing Quaternary cover does not by itself establish that the young deposits were folded; it can indicate interpreted bedrock structure beneath cover.",
     "A good surface fit does not uniquely constrain the 3D geometry or geological history."
   ],
   "files": {

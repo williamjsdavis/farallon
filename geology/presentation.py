@@ -12,10 +12,10 @@ STYLE_VERSION = "source-contacts-folds-v1"
 
 def observed_cartography(source: Image.Image, labels: np.ndarray,
                          mask: np.ndarray, palette: np.ndarray) -> np.ndarray:
-    """Use exact legend colors at observations and original map ink/cover elsewhere.
+    """Use exact legend colors at observations and original map ink elsewhere.
 
     Retaining the source RGB in excluded pixels is not an inferred bedrock label.
-    In particular, yellow Quaternary cover remains cover and is never scored.
+    Yellow Quaternary is an observed surface unit, with its own modeled deposit.
     """
     image = np.array(source.convert("RGBA").resize(
         (labels.shape[1], labels.shape[0]), Image.Resampling.NEAREST))

@@ -52,6 +52,7 @@ export type ModelResult = {
   cartographic_map_image?: string;
   cartographic_style?: string;
   fold_axes?: {
+    inferred_under_cover?: boolean;
     kind: 'anticline' | 'syncline';
     status: 'visible' | 'unavailable';
     diagnostic: string;

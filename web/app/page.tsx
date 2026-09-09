@@ -910,7 +910,7 @@ export default function Home() {
           <p>
             {error
               ? 'Check the local Python server on port 8000, then reload.'
-              : 'Preparing the map, seven rock units, and the first 3D model.'}
+              : 'Preparing the map, eight geological units, and the first 3D model.'}
           </p>
         </div>
       ) : (
@@ -1043,7 +1043,7 @@ export default function Home() {
                   {mapTab === 'terrain'
                     ? 'Printed map coordinates give approximate registration.'
                     : mapTab === 'units' || mapTab === 'source'
-                      ? 'Yellow = Quaternary cover. Source ink and cover are excluded from scoring.'
+                      ? 'Yellow = modeled Quaternary cover. All eight units count toward the fit; source ink is excluded.'
                       : 'Full prediction shown; gaps excluded from scoring.'}
                 </span>
               </div>
@@ -1059,6 +1059,10 @@ export default function Home() {
                     )
                       ? 'Some axes omitted after later deformation.'
                       : selected.fold_axes?.some(
+                            (axis) => axis.inferred_under_cover,
+                          )
+                        ? 'Older fold axes may continue beneath younger cover.'
+                        : selected.fold_axes?.some(
                             (axis) => axis.status === 'visible',
                           )
                         ? 'Axes belong to the proposed fold events.'
@@ -1302,7 +1306,7 @@ export default function Home() {
                             : mode === 'restart'
                               ? selected.restart?.description ||
                                 'A different starting history opens a new search branch. The best model from earlier branches is retained.'
-                              : 'We begin with seven horizontal sedimentary packages and no fold. The selected model sees the mapped outcrops, real topography, and the mismatch, then writes the missing geological events.')}
+                              : 'We begin with seven horizontal bedrock packages. The selected model sees the outcrops, yellow Quaternary cover, real topography, and the mismatch, then proposes folds and younger deposition.')}
                     </p>
                     <div className="testable-effect">
                       <ArrowRight size={15} />

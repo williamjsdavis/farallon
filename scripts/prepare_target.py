@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Prepare the fixed, bedrock-only observation raster from the supplied map.
+"""Prepare the fixed, eight-unit observation raster from the supplied map.
 
-This classifies source pixels by their distance from the seven legend colors.
+This classifies source pixels by their distance from the eight legend colors.
 It does not fill contact lines, infer covered bedrock, or alter the source image.
 Printed geographic ticks provide approximate registration to a real DEM.
 """
@@ -80,6 +80,7 @@ PALETTE = [
     {"id": 5, "name": "Triassic", "color": "#b1cbe6", "rgb": [177, 203, 230], "age": "Triassic", "legendSample": [13, 534, 32, 542]},
     {"id": 6, "name": "Jurassic", "color": "#d4dfe4", "rgb": [212, 223, 228], "age": "Jurassic", "legendSample": [13, 510, 32, 518]},
     {"id": 7, "name": "Cretaceous", "color": "#93c89b", "rgb": [147, 200, 155], "age": "Cretaceous", "legendSample": [13, 485, 32, 493]},
+    {"id": 8, "name": "Quaternary", "color": "#fbf08d", "rgb": [251, 240, 141], "age": "Quaternary", "legendSample": [13, 462, 32, 470]},
 ]
 QUATERNARY_RGB = [251, 240, 141]
 
@@ -87,17 +88,17 @@ QUATERNARY_RGB = [251, 240, 141]
 def classify_source(rgba: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """Return uint8 labels and exclusion reasons at the native source resolution.
 
-    Reasons: 0 observed bedrock, 1 transparent/outside, 2 Quaternary cover,
+    Reasons: 0 observed geological unit, 1 transparent/outside,
     3 unmatched color (linework, annotations, or uncertain blended source pixel).
+    Code 2 is reserved for legacy exports that excluded Quaternary cover.
     """
-    colors = np.array([entry["rgb"] for entry in PALETTE] + [QUATERNARY_RGB], dtype=np.float32)
+    colors = np.array([entry["rgb"] for entry in PALETTE], dtype=np.float32)
     distances = ((rgba[..., None, :3].astype(np.float32) - colors) ** 2).sum(axis=-1)
     nearest = distances.argmin(axis=-1)
     close = distances.min(axis=-1) <= COLOR_TOLERANCE**2
     opaque = rgba[..., 3] == 255
-    labels = np.where(opaque & close & (nearest < 7), nearest + 1, 0).astype(np.uint8)
+    labels = np.where(opaque & close, nearest + 1, 0).astype(np.uint8)
     reasons = np.full(labels.shape, 3, dtype=np.uint8)
-    reasons[opaque & close & (nearest == 7)] = 2
     reasons[labels > 0] = 0
     reasons[~opaque] = 1
     return labels, reasons
@@ -123,7 +124,7 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
     ys = height_km - (np.arange(size, dtype=np.float64) + 0.5) * height_km / size
     bounds = {"xmin": 0.0, "xmax": width_km, "ymin": 0.0, "ymax": height_km}
 
-    lut = np.zeros((8, 4), dtype=np.uint8)
+    lut = np.zeros((max(entry["id"] for entry in PALETTE) + 1, 4), dtype=np.uint8)
     for entry in PALETTE:
         lut[entry["id"]] = [*entry["rgb"], 255]
     target_rgba = lut[labels]
@@ -135,9 +136,9 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
     }
     total_pixels = int(labels.size)
     metadata = {
-        "schemaVersion": 1,
+        "schemaVersion": 2,
         "title": "Sheep Mountain — northwestern fold nose",
-        "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages are retained. Quaternary cover, transparent/outside pixels and colors inconsistent with the legend are unobserved.",
+        "description": "Fixed categorical observations from a crop of the supplied geological map, north of the Bighorn River crossing. Seven ordered bedrock packages and mapped young Quaternary surface deposits are observed as eight distinct units. Transparent/outside pixels and colors inconsistent with the legend remain unobserved.",
         "bounds": bounds,
         "boundsArray": [0.0, width_km, 0.0, height_km],
         "coordinateSystem": {"x": "east", "y": "north", "z": "up", "units": "km", "georeferenced": True, "registrationAccuracy": "approximate printed-figure ticks", "origin": "southwest corner of source crop"},
@@ -158,7 +159,7 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
         "classCounts": class_counts,
         "classFractions": {key: count / total_pixels for key, count in class_counts.items()},
         "excludedCounts": excluded_counts,
-        "classification": {"method": "Nearest fixed legend color in 8-bit sRGB", "maxColorDistance": COLOR_TOLERANCE, "quaternaryRGB": QUATERNARY_RGB, "requireOpaqueSource": True, "maskFixedAcrossCandidates": True, "interpolateAcrossMasks": False, "exclusionReasonCodes": {"0": "observed bedrock", "1": "transparent/outside", "2": "Quaternary cover", "3": "linework, annotation, or uncertain compressed color"}},
+        "classification": {"method": "Nearest fixed legend color in 8-bit sRGB", "maxColorDistance": COLOR_TOLERANCE, "quaternaryRGB": QUATERNARY_RGB, "quaternaryUnitId": 8, "quaternaryObserved": True, "requireOpaqueSource": True, "maskFixedAcrossCandidates": True, "interpolateAcrossMasks": False, "exclusionReasonCodes": {"0": "observed geological unit, including Quaternary deposits", "1": "transparent/outside", "2": "reserved legacy code: excluded Quaternary cover; unused in this export", "3": "linework, annotation, or uncertain compressed color"}},
         "citations": [{"authors": "Fiore Allwardt et al.", "year": 2007, "publication": "Geosphere", "figure": "Figure 1, printed page 409", "doi": "10.1130/GES00088.1", "url": "https://doi.org/10.1130/GES00088.1", "localPaper": "papers/Fiore-et-al-Geosphere-2007.pdf", "role": "Supplied geological map; target observations"}],
         "provenance": "Source figure supplied by the user. This target was rasterized from that figure, not from the NPS BICA GeoPackage or the Rioux USGS map. No new license is asserted for the source figure.",
         "warnings": [
@@ -168,6 +169,7 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
             "The source is a compressed raster. A fixed color tolerance masks uncertain, antialiased and annotated pixels; it does not reconstruct geology beneath them.",
             "Triassic, Jurassic and Cretaceous are grouped map packages, not single formations.",
             "The mapped arrowed axes represent folds, not evidence of an exposed surface fault.",
+            "A mapped fold axis crossing Quaternary cover does not by itself establish that the young deposits were folded; it can indicate interpreted bedrock structure beneath cover.",
             "A good surface fit does not uniquely constrain the 3D geometry or geological history.",
         ],
         "files": {"array": "data/target.npz", "image": "data/target.png", "mask": "data/target_mask.png", "sourceCrop": "data/target_source.png", "metadata": "data/target.json"},

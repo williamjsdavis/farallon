@@ -46,9 +46,9 @@ def _contacts(labels: np.ndarray, mask: np.ndarray) -> dict[tuple[int, int], np.
 def prepare_boundary_mask(mask: np.ndarray, exclusion_reasons: np.ndarray, radius: float = 2.0) -> np.ndarray:
     """Bridge only narrow uncertain-color gaps for approximate map contacts.
 
-    Reason codes: 0 observed bedrock, 1 outside, 2 cover, 3 unmatched color.
+    Reason codes: 0 observed unit, 1 outside, 2 legacy unobserved cover, 3 unmatched color.
     Reason 3 includes printed linework but is not guaranteed to be linework;
-    the radius is therefore deliberately small. Outside/cover plus a pixel
+    the radius is therefore deliberately small. Outside/legacy cover plus a pixel
     margin remain excluded. This mask must never replace the IoU mask.
     """
     observed, reasons = np.asarray(mask, dtype=bool), np.asarray(exclusion_reasons)

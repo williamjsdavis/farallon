@@ -16,7 +16,7 @@ from numba import njit
 from .history import PARAM_SPECS, HistoryError, history_to_program, parse_history, validate_history
 
 
-_ANTICLINE, _TILT, _FAULT, _INTRUSION, _ERODE, _SYNCLINE = 1, 2, 3, 4, 5, 6
+_ANTICLINE, _TILT, _FAULT, _INTRUSION, _ERODE, _SYNCLINE, _DEPOSIT = 1, 2, 3, 4, 5, 6, 7
 _WIDTH = 16
 
 
@@ -63,6 +63,12 @@ def _pack(history: Any, replace_final_erosion: bool = False) -> tuple[np.ndarray
             p[:7] = [event["x"], event["y"], event["z"], 1 / event["rx"],
                       1 / event["ry"], 1 / event["rz"], event["unit"]]
             code = _INTRUSION
+        elif kind == "deposit":
+            az = math.radians(event["azimuth"])
+            p[:9] = [event["x"], event["y"], math.sin(az), math.cos(az),
+                     event["base"], event["curvature_cross"], event["curvature_along"],
+                     event["slope"], event["unit"]]
+            code = _DEPOSIT
         else:
             p[0] = event["level"]
             code = _ERODE
@@ -128,6 +134,17 @@ def _label(x: float, y: float, z: float, codes: np.ndarray, params: np.ndarray,
             dx, dy, dz = (x - p[0]) * p[3], (y - p[1]) * p[4], (z - p[2]) * p[5]
             if dx * dx + dy * dy + dz * dz <= 1.0:
                 return int(p[6])
+        elif code == _DEPOSIT:
+            # An unconformable young fill above a quadratic basal surface.
+            # Later events have already been inverted, so this test happens
+            # in the deposit's own event-time coordinates. Older folds cannot
+            # deform it; a younger fold/fault/tilt can. Present-day terrain is
+            # an independent cutoff handled by the map/volume renderers.
+            dx, dy = x - p[0], y - p[1]
+            u, v = -p[3] * dx + p[2] * dy, p[2] * dx + p[3] * dy
+            base = p[4] + p[5] * u * u + p[6] * v * v + p[7] * v
+            if z >= base:
+                return int(p[8])
     index = 0
     # Half-open strata: an exact contact belongs to the upper/younger unit.
     while index < len(levels) and z >= levels[index]:

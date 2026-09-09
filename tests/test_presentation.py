@@ -35,10 +35,12 @@ def test_observed_display_retains_source_context_and_exact_observed_colors():
     assert np.all(shown[~mask & (source_rgba[..., 3] == 0)] == OUTSIDE)
     np.testing.assert_array_equal(labels, server.LABELS)
     np.testing.assert_array_equal(mask, server.MASK)
-    # Covered areas remain their source yellow; they are not reclassified.
-    cover = server.TARGET["exclusion_reasons"] == 2
-    assert np.all(~mask[cover])
-    np.testing.assert_array_equal(shown[cover, :3], source_rgba[cover, :3])
+    # Yellow is now an observed unit with its exact legend color.
+    cover = labels == 8
+    assert cover.sum() == 7290
+    assert np.all(mask[cover])
+    assert np.all(server.TARGET["exclusion_reasons"][cover] == 0)
+    assert np.all(shown[cover, :3] == [251, 240, 141])
 
 
 def test_contacts_are_continuous_between_pixels_without_erasing_thin_units():

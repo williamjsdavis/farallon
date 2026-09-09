@@ -14,6 +14,7 @@ from .history import HistoryError, PARAM_SPECS, validate_history
 
 
 _DEFORMATION = {"anticline", "syncline", "tilt", "fault"}
+_STRUCTURE = _DEFORMATION | {"deposit"}
 
 
 def _scene_history(history: Any) -> dict:
@@ -21,8 +22,9 @@ def _scene_history(history: Any) -> dict:
     events = result["events"]
     if (events[0]["units"] != list(range(1, 8)) or len(events) > 8
             or events[-1] != {"type": "erode", "level": 0.0}
-            or any(event["type"] not in _DEFORMATION for event in events[1:-1])):
-        raise HistoryError("Restarts require seven original units, at most eight events, and final erode(level=0)")
+            or any(event["type"] not in _STRUCTURE for event in events[1:-1])
+            or any(event["type"] == "deposit" and event["unit"] != 8 for event in events)):
+        raise HistoryError("Restarts require seven original units, optional unit-8 deposits, at most eight events, and final erode(level=0)")
     return result
 
 
@@ -66,6 +68,8 @@ def _perturb_event(event: dict, rng: np.random.Generator, box: tuple[float, floa
     width, height = xmax - xmin, ymax - ymin
     span = max(width, height)
     for field, spec in PARAM_SPECS[event["type"]].items():
+        if field == "unit":
+            continue  # Material identities never participate in geometry search.
         value = event[field]
         lower, upper = spec["min"], spec["max"]
         if field in {"x", "y"}:
@@ -87,6 +91,15 @@ def _perturb_event(event: dict, rng: np.random.Generator, box: tuple[float, floa
             value = value * np.exp(rng.normal(0, .5)) + rng.normal(0, .15 * span)
         elif field == "slip":
             value += rng.normal(0, .20 * span)
+        elif event["type"] == "deposit" and field.startswith("curvature_"):
+            # Retain an exact planar/strip proposal; vary existing curvature
+            # broadly without a unit-dependent km-sized additive change.
+            if value != 0:
+                value *= np.exp(rng.normal(0, .7))
+        elif event["type"] == "deposit" and field == "slope":
+            value += rng.normal(0, .12)
+        elif event["type"] == "deposit" and field == "base":
+            value += rng.normal(0, max(.05, .04 * span))
         else:  # Vertical pivot/reference positions of tilt and fault events.
             value += rng.normal(0, .10 * span)
         event[field] = float(np.clip(value, lower, upper))
@@ -103,13 +116,14 @@ def restart_history(
 
     Odd indices start with undeformed baseline strata, varying thicknesses and
     vertical position. Even indices broadly vary the overall best's existing
-    deformation and strata. Every third even restart removes one deformation
-    event when several exist. Invalid/undeformed best histories fall back to
+    deformation, young deposits and strata. Every third even restart removes
+    one structural event when several exist. Invalid/unstructured best histories fall back to
     baseline strata; the supplied baseline itself must satisfy scene invariants.
 
     Source histories are never mutated. All distances and bounds use km;
     ``bounds`` supplies xmin/xmax/ymin/ymax. Contact intervals remain positive,
-    unit IDs remain 1..7 and the fixed terrain offset remains erode(level=0).
+    bedrock IDs remain 1..7, deposit IDs remain 8, and the fixed terrain offset
+    remains erode(level=0).
     """
     for name, value, minimum in (("restart_index", restart_index, 1), ("seed", seed, 0)):
         if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)) or value < minimum:
@@ -123,7 +137,7 @@ def restart_history(
     if not fresh:
         try:
             candidate = _scene_history(best_history)
-            fresh = not any(event["type"] in _DEFORMATION for event in candidate["events"])
+            fresh = not any(event["type"] in _STRUCTURE for event in candidate["events"])
         except (HistoryError, TypeError, ValueError):
             fresh = True
         fallback = fresh
@@ -132,12 +146,12 @@ def restart_history(
         candidate["events"] = [candidate["events"][0], candidate["events"][-1]]
         description = "Fresh undeformed strata with new thicknesses and vertical position"
         if fallback:
-            description += " (baseline fallback: no usable deformed best history)"
+            description += " (baseline fallback: no usable structured best history)"
     else:
         description = "Broad perturbation of the overall best history's geometry and strata"
-        deformation = [i for i, event in enumerate(candidate["events"]) if event["type"] in _DEFORMATION]
-        if restart_index % 6 == 0 and len(deformation) > 1:
-            removed = candidate["events"].pop(int(rng.choice(deformation)))
+        structural = [i for i, event in enumerate(candidate["events"]) if event["type"] in _STRUCTURE]
+        if restart_index % 6 == 0 and len(structural) > 1:
+            removed = candidate["events"].pop(int(rng.choice(structural)))
             description += f"; removed one extra {removed['type']} event"
         for event in candidate["events"][1:-1]:
             _perturb_event(event, rng, box)

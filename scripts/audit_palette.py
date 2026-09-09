@@ -23,7 +23,9 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from scripts.prepare_target import DEFAULT_SOURCE, PALETTE, SOURCE_CROP, classify_source
 
-CURRENT_SCENE = "sheep-023fcbb758811c9a"
+# Retain a genuine archived prediction for display-style comparisons. Its old
+# seven-unit score is not a score against the eight-unit observation raster.
+ARCHIVED_BEDROCK_SCENE = "sheep-023fcbb758811c9a"
 NEAR_BLACK = [25, 29, 34]
 COVER = [251, 240, 141]
 PALE_UNKNOWN = [232, 232, 225]
@@ -97,9 +99,9 @@ def choose_record(record_path: Path | None) -> tuple[Path, dict]:
     if record_path:
         return record_path, json.loads(record_path.read_text())
     records = [(p, json.loads(p.read_text())) for p in (ROOT / "data/runs").glob("*.json")]
-    compatible = [(p, d) for p, d in records if d.get("scene_id") == CURRENT_SCENE]
+    compatible = [(p, d) for p, d in records if d.get("scene_id") == ARCHIVED_BEDROCK_SCENE]
     if not compatible:
-        raise ValueError("No recorded prediction exists for the fixed-terrain scene.")
+        raise ValueError("No archived bedrock prediction exists; supply --record for a display comparison.")
     return max(compatible, key=lambda item: item[1]["result"]["metrics"]["score"])
 
 
@@ -138,7 +140,7 @@ def audit(output: Path, audit_json: Path, record_path: Path | None, pdf_render: 
                 "targetPixels": int((labels == entry["id"]).sum()),
                 "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation."}
         if pdf is not None:
-            middle = {1: 930, 2: 901, 3: 871, 4: 841, 5: 811, 6: 781, 7: 751}[entry["id"]]
+            middle = {1: 930, 2: 901, 3: 871, 4: 841, 5: 811, 6: 781, 7: 751, 8: 721}[entry["id"]]
             box = [122, middle - 3, 141, middle + 4]
             sample = color_stats(pdf[box[1]:box[3], box[0]:box[2]])
             item["renderedPDF"] = {"sampleLTRB": box, **sample,
@@ -168,18 +170,18 @@ def audit(output: Path, audit_json: Path, record_path: Path | None, pdf_render: 
     # B: no inference enters the observation arrays. Fill only one-pixel reason3
     # display gaps away from cover/outside; keep their original mask separately.
     distance, nearest = distance_transform_edt(~mask, return_indices=True)
-    protected = (reasons == 1) | (reasons == 2)
+    protected = (reasons == 1) | (labels == 8)
     away_from_cover = distance_transform_edt(~protected) > 1.5
     fill = (reasons == 3) & (distance <= 1.0) & away_from_cover
     display_labels = labels.copy()
     display_labels[fill] = labels[nearest[0][fill], nearest[1][fill]]
     observed_b = lut[display_labels].copy()
     observed_b[display_labels == 0] = NEAR_BLACK
-    observed_b[reasons == 2] = COVER
     observed_b[reasons == 1] = PALE_UNKNOWN
     pred_b = raw.copy()  # Unoutlined bands preserve narrow predicted units.
 
-    # C: original source-color gaps retain Quaternary yellow and dark linework.
+    # C: original source-color gaps retain printed linework and annotations.
+    # Yellow is now an observed unit, displayed with its canonical legend color.
     # Predicted contacts are drawn independently, at half the A stroke width.
     observed_c = cartographic_observation(labels, mask, crop, lut)
     pred_c = cartographic_prediction(prediction, lut)
@@ -197,10 +199,10 @@ def audit(output: Path, audit_json: Path, record_path: Path | None, pdf_render: 
 
     rows = [
         ("Reference: supplied source crop / frozen classified target", "original_crop", "current_target"),
-        ("Current: fixed observation gaps / full raw prediction", "current_target", "current_prediction"),
+        ("Eight-unit observations / archived full raw prediction", "current_target", "current_prediction"),
         ("A: near-black gaps / 1-pixel dark predicted contacts", "style_a_observed", "style_a_prediction"),
         ("B: small display-only fill + yellow cover / unoutlined prediction", "style_b_observed", "style_b_prediction"),
-        ("C: source-like yellow cover + linework / half-pixel predicted contacts", "style_c_observed", "style_c_prediction"),
+        ("C: observed yellow + source linework / half-pixel predicted contacts", "style_c_observed", "style_c_prediction"),
     ]
     for width, filename in ((520, "contact_sheet.png"), (320, "contact_sheet_app_size.png")):
         height = round(width * target_meta["bounds"]["ymax"] / target_meta["bounds"]["xmax"])
@@ -208,7 +210,7 @@ def audit(output: Path, audit_json: Path, record_path: Path | None, pdf_render: 
         sheet = Image.new("RGB", (margin * 2 + width * 2 + gap, 92 + len(rows) * (height + row_header + gap)), "#f5f3ed")
         draw = ImageDraw.Draw(sheet)
         draw.text((margin, 15), "SHEEP MOUNTAIN  /  PALETTE + GAP STYLE REVIEW", font=font(24 if width == 520 else 19), fill="#17222b")
-        draw.text((margin, 49), "Display only — fixed labels, mask and scores. Full prediction.", font=font(15 if width == 520 else 12), fill="#374953")
+        draw.text((margin, 49), "Display only — archived prediction; old scores do not apply to this target.", font=font(15 if width == 520 else 12), fill="#374953")
         for i, (title, left, right) in enumerate(rows):
             y = 85 + i * (height + row_header + gap)
             draw.text((margin, y), title, font=font(18 if width == 520 else 13), fill="#17222b")
@@ -229,29 +231,31 @@ def audit(output: Path, audit_json: Path, record_path: Path | None, pdf_render: 
                           "aContourPixels": int((pred_edges & unit).sum()),
                           "aContourFraction": float((pred_edges & unit).sum() / count) if count else None})
     report = {
-        "schemaVersion": 1, "source": str(DEFAULT_SOURCE.relative_to(ROOT)),
+        "schemaVersion": 2, "source": str(DEFAULT_SOURCE.relative_to(ROOT)),
         "sourceSHA256": sha256(source_bytes).hexdigest(), "sourceImageDimensions": [rgba.shape[1], rgba.shape[0]],
         "sourceCropLTRB": list(SOURCE_CROP), "units": audit_units,
         "recommendation": "Retain the existing RGB palette: every entry equals its source WEBP legend median. Display gaps and contact width dominate the visual difference; do not change labels or masks to improve appearance.",
-        "recommendedDisplayStyle": "C: canonical observed interiors with source linework/Quaternary context, and independently antialiased predicted unit contacts. Keep raw predicted images and scoring arrays separate.",
+        "recommendedDisplayStyle": "C: canonical observed interiors for all eight units, including yellow Quaternary, with unscored source linework context and independently antialiased predicted unit contacts. Keep raw predicted images and scoring arrays separate.",
         "displayFindings": [
-            "A paints all missing observations near-black, including yellow Quaternary, and heavily obscures the narrow mapped core.",
+            "A paints remaining missing observations near-black and heavily obscures the narrow mapped core. Yellow Quaternary is now an observed class in every style.",
             f"B fills {int(fill.sum())} one-pixel display gaps ({100 * float(fill.mean()):.2f}% of the raster) but does not recover reliable observations of the thin units. Its benefit remains modest at 320-pixel app-panel width.",
-            "C most closely matches the supplied cartography without inventing covered geology. The source-like image contains context that is not part of the score; disclose that distinction.",
+            "C most closely matches the supplied cartography without inventing subsurface geology. Remaining masked source linework and annotations provide unscored context; yellow Quaternary pixels are scored observations.",
             "Render the antialiased cartographic prediction with normal image sampling, not CSS image-rendering:pixelated, to keep subpixel contacts continuous at actual panel size.",
             f"Madison has {audit_units[0]['targetPixels']} and Amsden {audit_units[1]['targetPixels']} scored target pixels. Their native crop interiors (>1.5px from class edges) contain only {audit_units[0]['nativeCropInterior']['count']} and {audit_units[1]['nativeCropInterior']['count']} pixels; apparent width is not reliable evidence for precise geological thickness.",
         ],
         "prediction": {"record": str(record_path.relative_to(ROOT)), "sceneId": record.get("scene_id"),
                        "program": result["program"], "metrics": result["metrics"],
-                       "selection": "Highest combined score among saved records in this scene, unless --record is provided."},
+                       "selection": "Explicit --record, or the highest archived combined score in the original seven-unit bedrock scene; used only to compare display styles.",
+                       "metricsScope": "Recorded metrics apply only to the record's own scene. They are not recomputed against the current eight-unit target and must not be compared with current target scores.",
+                       "scoredAgainstCurrentTarget": False},
         "styles": {
             "A": {"gapRGB": NEAR_BLACK, "predictedContactWidthTargetPixels": 1.0,
-                  "caveat": "Black missing-data gaps resemble geological linework and can conceal very thin units. This treatment merges cover and uncertainty visually."},
+                  "caveat": "Black missing-data gaps resemble geological linework and can conceal very thin units. Quaternary remains a separately colored observed unit."},
             "B": {"displayFillPixels": int(fill.sum()), "displayFillFractionOfRaster": float(fill.mean()),
                   "displayFillRule": "Only reason3, nearest observed pixel <=1 raster pixel, >1.5 pixels from Quaternary/outside; nearest unit for display only.",
                   "coverRGB": COVER, "predictedContacts": "none",
                   "caveat": "Interpolated color is not a geological observation. Keep scoring mask and explicit display-fill note."},
-            "C": {"gapRule": "Source WEBP colors retained where target unobserved; pale outside, source yellow cover and dark printed linework.",
+            "C": {"gapRule": "Source WEBP colors retained where target unobserved; pale outside and dark printed linework. Yellow Quaternary is an observed unit with canonical RGB, not a display fill.",
                   "predictedContactRGB": [44, 43, 42], "predictedContactWidthTargetPixels": 0.5,
                   "contactRendering": "Continuous class-edge segments at 4x resolution, 2-pixel strokes, Lanczos-downsampled coverage blended over full raw prediction.",
                   "caveat": "Source annotations and antialiasing remain contextual imagery, not scored observations; predicted lines denote unit boundaries only."},

@@ -60,6 +60,16 @@ PARAM_SPECS: dict[str, dict[str, dict[str, float]]] = {
         "rz": _spec(0.001, 10, 0.3, 0.05),
         "unit": _spec(1, 254, 8, 1),
     },
+    "deposit": {
+        "unit": _spec(1, 254, 8, 1),
+        "x": _spec(-100, 100, 0, 0.10),
+        "y": _spec(-100, 100, 0, 0.10),
+        "azimuth": _spec(0, 360, 135, 3),
+        "base": _spec(-100, 100, -0.1, 0.05),
+        "curvature_cross": _spec(0, 100, 1, 0.15),
+        "curvature_along": _spec(0, 100, 0, 0.05),
+        "slope": _spec(-5, 5, 0, 0.05),
+    },
     "erode": {"level": _spec(-100, 100, 0, 0.1)},
 }
 # The common `uplift` parameter is a nonnegative displacement magnitude:
@@ -124,7 +134,7 @@ def _canonical_event(event: Any, index: int) -> dict[str, Any]:
         value = _number(event.get(name, spec["default"]), f"{kind}.{name}")
         if not spec["min"] <= value <= spec["max"]:
             raise HistoryError(f"{kind}.{name} must be in [{spec['min']}, {spec['max']}]")
-        result[name] = _unit(value, "intrusion.unit") if name == "unit" else value
+        result[name] = _unit(value, f"{kind}.unit") if name == "unit" else value
     return result
 
 
@@ -132,8 +142,9 @@ def validate_history(history: Any) -> dict[str, Any]:
     """Return a fresh canonical JSON-serializable history or raise HistoryError.
 
     A string program, a canonical dictionary, or an event list is accepted.
-    Erosion may only be the final event in this bounded language: unconformity
-    deposition and intrusion into an already-eroded air region are not implied.
+    Erosion may only be the final event in this bounded language. A deposit
+    replaces older material above its analytic basal unconformity; repeated
+    deposits may contribute separate patches to the same young material ID.
     """
     if isinstance(history, str):
         return parse_history(history)
@@ -153,13 +164,19 @@ def validate_history(history: Any) -> dict[str, Any]:
     if result[0]["type"] != "strata" or any(e["type"] == "strata" for e in result[1:]):
         raise HistoryError("History must begin with exactly one strata event")
     if any(e["type"] == "erode" for e in result[:-1]):
-        raise HistoryError("erode must be the final event; younger deposition is not supported")
+        raise HistoryError("erode must be the final event; deposit defines its own basal unconformity")
     existing = set(result[0]["units"])
+    deposited: set[int] = set()
     for event in result[1:]:
         if event["type"] == "intrusion":
             if event["unit"] in existing:
                 raise HistoryError("Each intrusion must create a new, distinct unit ID")
             existing.add(event["unit"])
+        elif event["type"] == "deposit":
+            if event["unit"] in existing and event["unit"] not in deposited:
+                raise HistoryError("deposit must use a new unit ID or an existing deposit unit ID")
+            existing.add(event["unit"])
+            deposited.add(event["unit"])
     return {"version": 1, "units": "km", "events": result}
 
 

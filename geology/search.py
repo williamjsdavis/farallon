@@ -28,7 +28,8 @@ class _Parameter:
     level: int | None = None
 
 
-_INACTIVE_ZERO = {"plunge_nw", "plunge_se", "uplift", "amplitude", "throw", "slip", "angle"}
+_INACTIVE_ZERO = {"plunge_nw", "plunge_se", "uplift", "amplitude", "throw", "slip", "angle",
+                  "curvature_cross", "curvature_along"}
 
 
 def _enabled(allowed: set[str] | None, index: int, kind: str, field: str) -> bool:
@@ -84,6 +85,13 @@ def _parameters(history: dict, xs: np.ndarray, ys: np.ndarray, allowed: set[str]
                 step = max(0.02, abs(value) * 0.25)
             elif field in {"uplift", "amplitude"}:
                 step = max(0.03, abs(value) * 0.12)
+            elif kind == "deposit" and field == "base":
+                step = max(0.01, min(0.1, 0.02 * span))
+            elif kind == "deposit" and field.startswith("curvature_"):
+                # Curvature has units km^-1; scale the step to the viewport.
+                step = max(0.02, abs(value) * 0.25, 0.20 / span)
+            elif kind == "deposit" and field == "slope":
+                step = max(0.02, abs(value) * 0.15)
             else:
                 step = max(float(config.get("step", 0.0)), abs(value) * 0.1, 0.01)
             fields = (field,)
@@ -144,7 +152,8 @@ def refine_history(
     ``allowed_fields`` nominates fields by ``plunge_nw``, ``anticline.x``, or
     ``events.1.x``. An explicit nomination opts out of the default structural
     symmetry/zero preservation for those fields. Erosion and event existence
-    always remain fixed.
+    always remain fixed. A zero deposit curvature stays zero by default,
+    retaining the proposed planar/valley-strip geometry until explicitly freed.
     """
     # Delay the engine import so scoring remains usable independently.
     from .engine import render_map

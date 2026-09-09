@@ -76,7 +76,7 @@ HEIGHTS = TERRAIN_GRID.sample(XS, YS)
 HEIGHTS.setflags(write=False)
 # Observations, terrain and model semantics define a comparable scoring scene.
 # Replays from the original flat experiment remain archived, not rescored.
-scene_hash = sha256(b"farallon-terrain-v2-paired-contacts-v1")
+scene_hash = sha256(b"farallon-terrain-v3-quaternary-deposition-paired-contacts-v1")
 for array in (LABELS, MASK, TARGET["exclusion_reasons"], XS, YS, HEIGHTS):
     scene_hash.update(np.ascontiguousarray(array).tobytes())
 SCENE_ID = "sheep-" + scene_hash.hexdigest()[:16]
@@ -147,20 +147,22 @@ def volume_terrain(resolution: int) -> tuple[np.ndarray, list[float], dict]:
 def check_scene(scene_id: str | None, baseline_id: str | None = None):
     if ((scene_id is not None and scene_id != SCENE_ID) or
             (baseline_id is not None and baseline_id != BASELINE_ID)):
-        raise HTTPException(409, "The terrain or starting history has changed. Reload the demo to use the current scene.")
+        raise HTTPException(409, "The observations, terrain, or starting history have changed. Reload the demo to use the current scene.")
 
 
 def canonical(program: str) -> dict:
     history = parse_history(program)
     # Unit identities and the observation surface are data, not fit parameters.
     if history["events"][0]["units"] != list(range(1, 8)):
-        raise HistoryError("Keep the seven observed unit IDs in their original order.")
+        raise HistoryError("Keep bedrock unit IDs 1–7 in their original order; add Quaternary unit 8 with deposit().")
     if history["events"][-1]["type"] != "erode" or history["events"][-1]["level"] != 0:
         raise HistoryError("The measured terrain is fixed: end with erode(level=0) for zero terrain offset.")
     if len(history["events"]) > 8:
         raise HistoryError("Use at most eight events for this demonstration.")
     if any(e["type"] == "intrusion" for e in history["events"]):
-        raise HistoryError("This target has seven sedimentary packages; adding intrusive units is outside its scope.")
+        raise HistoryError("This target has seven bedrock packages and Quaternary cover; intrusive units are outside its scope.")
+    if any(e["type"] == "deposit" and e["unit"] != 8 for e in history["events"]):
+        raise HistoryError("Use deposit(unit=8) for yellow Quaternary cover; preserve the bedrock unit identities.")
     return history
 
 
@@ -316,14 +318,19 @@ Do not invent a visible fault from fold-axis arrows or the river. Do not repaint
 Map exposure does not uniquely determine the subsurface. The supplied fixed USGS elevation
 grid is real topography, approximately registered from printed map coordinates. Its valleys
 and ridges affect the exposed units. Extremely thin source units may remain unexplained.
-The starting program has only undeformed strata: add missing deformation if the observed
-outcrop geometry calls for it. A numerical optimizer cannot add a geological event for you.
+The starting program has only undeformed bedrock strata: add missing deformation and
+younger deposits when the map calls for them. Yellow is observed Quaternary unit 8,
+included in both overlap and contact scoring; leaving it out is a measurable mismatch.
+A mapped fold-axis trace through yellow may indicate an interpreted bedrock syncline
+beneath cover. It does not by itself prove that Quaternary deposits were folded. Prefer
+older deformation followed by young deposition unless evidence supports later deformation.
+A numerical optimizer cannot add a geological event for you.
 
 DSL: one call per event, oldest to youngest, only literal keyword arguments, no imports,
 assignments, loops, expressions, or function definitions. Begin with strata and end with
 erode(level=0). This final event intersects rocks with the fixed measured terrain; level=0
-means ZERO OFFSET to that terrain, not a horizontal plane. Units must remain
-[1,2,3,4,5,6,7], oldest to youngest. Preserve all seven.
+means ZERO OFFSET to that terrain, not a horizontal plane. Initial bedrock units must remain
+[1,2,3,4,5,6,7], oldest to youngest. Preserve all seven; deposit() adds unit 8 separately.
 strata(levels=[six strictly increasing contact elevations in km], units=[1,2,3,4,5,6,7])
 anticline(x=..., y=..., azimuth=..., uplift=..., dip_ne=..., dip_sw=..., hinge=...,
           nw_length=..., se_length=..., plunge_nw=..., plunge_se=...)
@@ -331,6 +338,7 @@ syncline(x=..., y=..., azimuth=..., uplift=..., dip_ne=..., dip_sw=..., hinge=..
          nw_length=..., se_length=..., plunge_nw=..., plunge_se=...)
 tilt(x=...,y=...,z=...,azimuth=...,angle=...)
 fault(x=...,y=...,z=...,azimuth=...,dip=...,slip=...)
+deposit(unit=8,x=...,y=...,azimuth=...,base=...,curvature_cross=...,curvature_along=...,slope=...)
 erode(level=0)
 At most 8 events. Strata extend infinitely before final erosion. Effective VERTICAL contact
 intervals are fitted, not measured normal bed thicknesses. Oldest unit occupies z below
@@ -352,11 +360,26 @@ Syncline uses the same nonnegative uplift MAGNITUDE and geometry, but lowers roc
 by F (reverse coordinates classify z+F). Add one only when visual evidence calls for
 a downfold; never label the flat gap beside an anticline as a syncline automatically.
 
+Deposition semantics: deposit(unit=8) adds yellow young cover above an analytic basal
+surface, replacing older material there (an unconformity). For dx=x_point-x and dy=y_point-y,
+u=-cos(azimuth)*dx+sin(azimuth)*dy and v=sin(azimuth)*dx+cos(azimuth)*dy, with azimuth in
+degrees. The base is base + curvature_cross*u*u + curvature_along*v*v + slope*v.
+Points at or above it become unit 8; the final measured terrain clips the deposit.
+base is km, curvatures are nonnegative km^-1, slope is dimensionless. Cross curvature
+creates a valley fill; positive along curvature closes it into a basin. Zero curvatures
+give a planar base. Lower base expands exposure; larger curvature narrows it. Several
+deposit events can reuse unit 8 for separate lobes. Choose geometry from the map rather
+than copying target labels. This is a simplified basin/valley fill, not sediment transport.
+Event order matters: a deposit after a syncline buries deformed bedrock; a syncline after
+deposition also bends the deposit. Both histories are executable hypotheses. Keep total
+events at most 8 and select base/curvatures/position for refinement when fitting cover.
+
 Return JSON following the schema. `program` must contain the entire executable revised
 history. `headline` is a short human-readable change; `observation` is at most2 sentences
 of grounded visual evidence; `expected_effect` is a short testable effect. Set
 `parameters_to_refine` to up to10 field names such as x,y,azimuth,uplift,levels,dip_ne,
-dip_sw,hinge,nw_length,plunge_nw that a local search should tune after your proposal.
+dip_sw,hinge,nw_length,plunge_nw,base,curvature_cross,curvature_along,slope that a local
+search should tune after your proposal.
 Numerical refinements and actual measurements, not your own assessment, decide acceptance.
 """
 
@@ -686,7 +709,7 @@ def replay(run_id: str):
         raise HTTPException(404)
     record = json.loads(path.read_text())
     if record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID:
-        raise HTTPException(409, "This recording belongs to an earlier terrain or starting history. Use the current scene's recordings.")
+        raise HTTPException(409, "This recording uses earlier observations, terrain, or starting history. Use the current scene's recordings.")
     # Refresh only presentation for archived runs. Recorded scores, raw images,
     # timings and the file on disk retain their original provenance.
     if record["result"].get("program"):
@@ -711,7 +734,7 @@ def replay_playlist():
     """One explicitly ordered investigation, separate from the full archive."""
     manifest = _read_replay_json(ROOT / "data/replay.json", "Replay playlist")
     if manifest.get("scene_id") != SCENE_ID or manifest.get("baseline_id") != BASELINE_ID:
-        raise HTTPException(409, "Replay playlist belongs to another terrain or starting history.")
+        raise HTTPException(409, "Replay playlist belongs to another observation scene or starting history.")
     run_ids = manifest.get("run_ids")
     title = manifest.get("title")
     if (manifest.get("version") != 1 or not isinstance(title, str) or not title.strip()
@@ -728,7 +751,7 @@ def replay_playlist():
         if (record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID
                 or not isinstance(result, dict) or result.get("scene_id") != SCENE_ID
                 or result.get("baseline_id") != BASELINE_ID):
-            raise HTTPException(409, f"Replay record {run_id} belongs to another terrain or starting history.")
+            raise HTTPException(409, f"Replay record {run_id} belongs to another observation scene or starting history.")
         try:
             before = canonical(record["before_program"])
             candidate = canonical(result["program"])

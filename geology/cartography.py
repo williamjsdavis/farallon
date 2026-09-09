@@ -78,7 +78,10 @@ def fold_axes(history: Any, bounds: dict) -> list[dict]:
     its intersection with the fixed DEM there is no truthful projected trace.
     Such events return empty geometry with status `unavailable` and a diagnostic.
     Superposed folds retain their separate *construction* axes; no net syncline
-    is inferred between uplift events. In an isolated upright stratigraphy,
+    is inferred between uplift events. A younger deposit retains an older
+    construction axis with an inferred-under-cover diagnostic; that axis does
+    not assert that the cover is folded or that bedrock is exposed along it.
+    In an isolated upright stratigraphy,
     anticlines expose an older core and synclines a younger core at a flat cut,
     when enough stratigraphic levels are exposed. Terrain/overprinting can
     change that outcrop pattern, so labels never assert it as observed evidence.
@@ -116,5 +119,8 @@ def fold_axes(history: Any, bounds: dict) -> list[dict]:
             feature["polyline"] = _segment(event, box)
             if not feature["polyline"]:
                 continue  # No nonzero-length axis segment in this viewport.
+            if any(e["type"] == "deposit" for e in events[index + 1:]):
+                feature["diagnostic"] = "Model fold axis; younger cover may conceal structure. Inferred under cover, not an assertion that the younger deposit is folded or that this trace is observed."
+                feature["inferred_under_cover"] = True
         features.append(feature)
     return features
