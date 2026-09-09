@@ -62,6 +62,10 @@ PARAM_SPECS: dict[str, dict[str, dict[str, float]]] = {
     },
     "erode": {"level": _spec(-100, 100, 0, 0.1)},
 }
+# The common `uplift` parameter is a nonnegative displacement magnitude:
+# anticline raises strata and syncline lowers them. Independent dictionaries
+# prevent future parameter edits from unintentionally changing the other kind.
+PARAM_SPECS["syncline"] = {name: dict(spec) for name, spec in PARAM_SPECS["anticline"].items()}
 
 MAX_EVENTS = 24
 MAX_PROGRAM_LENGTH = 24_000

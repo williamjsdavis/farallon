@@ -73,19 +73,50 @@ def test_propose_requests_configured_tier_and_reports_actual_tier(
     assert call["instructions"] == server.SYSTEM_PROMPT
     assert call["max_output_tokens"] == 3500
 
-    content = call["input"][0]["content"]
-    assert call["input"][0]["role"] == "user"
-    context = json.loads(content[0]["text"])
+    assert [message["role"] for message in call["input"]] == ["user", "user"]
+    reference, dynamic = [message["content"] for message in call["input"]]
+    context = json.loads(dynamic[0]["text"])
     assert context["current_program"] == request.program
     assert context["current_metrics"] == current["metrics"]
     assert context["recent_attempts"] == [previous]
+    fixed = json.loads(reference[-1]["text"])
+    assert set(fixed) == {"bounds_km", "image_axes", "legend", "observed_fraction", "parameter_bounds", "terrain"}
+    assert fixed["bounds_km"] == server.META["bounds"]
+    assert fixed["image_axes"] == "top=north/right=east"
+    assert fixed["legend"] == [{key: entry[key] for key in ("id", "name", "color", "age")}
+                               for entry in server.META["palette"]]
+    assert fixed["observed_fraction"] == server.META["labeledFraction"]
+    assert fixed["parameter_bounds"] == server.PARAM_SPECS
+    assert fixed["terrain"]["source"] == server.TERRAIN_META["source"]
+    assert fixed["terrain"]["datum_m"] == server.TERRAIN_META["datum_m"]
+    assert fixed["terrain"]["min_z_km"] == float(server.HEIGHTS.min())
+    assert fixed["terrain"]["max_z_km"] == float(server.HEIGHTS.max())
+    assert fixed["terrain"]["height_samples_5x5_north_up_km"] == server.HEIGHTS[server.np.ix_(
+        server.np.linspace(0, len(server.YS) - 1, 5).astype(int),
+        server.np.linspace(0, len(server.XS) - 1, 5).astype(int))].round(4).tolist()
+    assert call["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
+    assert server.SCENE_ID in call["prompt_cache_key"]
+    content = reference + dynamic
+    breakpoints = [index for index, item in enumerate(content) if "prompt_cache_breakpoint" in item]
+    assert breakpoints == [len(reference) - 1]
+    assert reference[-1]["type"] == "input_text"
+    assert reference[-1]["prompt_cache_breakpoint"] == {"mode": "explicit"}
     images = [item for item in content if item["type"] == "input_image"]
     assert [item["image_url"] for item in images] == [
         f"data:image/png;base64,{server.META['sourceImage'].split('/')[-1]}",
-        "data:image/png;base64,target.png", current["map_image"],
-        current["error_image"], server.TERRAIN_IMAGE,
+        "data:image/png;base64,target.png", server.TERRAIN_IMAGE,
+        current["map_image"], current["error_image"],
     ]
     assert all(item["detail"] == "high" for item in images)
+    labels = [content[index - 1]["text"] for index, item in enumerate(content) if item["type"] == "input_image"]
+    assert labels == [
+        "Original map with legend; only the NW crop is scored:",
+        "Clean observed NW target; transparent gaps are unobserved. Same bounds as prediction:",
+        "Fixed USGS terrain in the same frame: dark teal is low elevation, pale yellow is high; shading indicates relief:",
+        "Current predicted surface, same north-up frame and geological colors:",
+        "Disagreement overlay: red is mismatch; green is agreement; transparent is unobserved:",
+    ]
+    assert "stream" not in call
     output_format = call["text"]["format"]
     assert output_format["type"] == "json_schema"
     assert output_format["name"] == "geological_proposal"
@@ -102,6 +133,41 @@ def test_propose_requests_configured_tier_and_reports_actual_tier(
     assert proposal["response_id"] == "resp_mock_only"
     assert proposal["requested_service_tier"] == requested
     assert proposal["service_tier"] == returned
+
+
+def test_cached_reference_prefix_survives_changed_iteration_context(provider_stub):
+    first_request = server.IterationRequest(program=server.BASELINE)
+    first_current = {"metrics": {"miou": 0.03, "score": 0.025},
+                     "map_image": "data:image/png;base64,first-prediction",
+                     "error_image": "data:image/png;base64,first-error"}
+    asyncio.run(server.propose(first_request, first_current))
+    first = provider_stub.create.call_args.kwargs
+    previous = [{"scene_id": server.SCENE_ID, "baseline_id": server.BASELINE_ID,
+                 "headline": f"Attempt {index}"} for index in range(6)]
+    second_request = server.IterationRequest(
+        program=server.BASELINE.replace("-1.2", "-1.3"),
+        previous=[*previous, {"scene_id": "stale", "baseline_id": server.BASELINE_ID}],
+        auto_context={"iteration": 7, "branch": 2, "stall_count": 1})
+    second_current = {"metrics": {"miou": 0.4, "score": 0.35},
+                      "map_image": "data:image/png;base64,new-prediction",
+                      "error_image": "data:image/png;base64,new-error"}
+    asyncio.run(server.propose(second_request, second_current))
+    second = provider_stub.create.call_args.kwargs
+
+    assert first["input"][0] == second["input"][0]
+    assert first["prompt_cache_key"] == second["prompt_cache_key"]
+    assert first["instructions"] == second["instructions"]
+    assert first["text"] == second["text"]
+    assert first["input"][1] != second["input"][1]
+    dynamic = second["input"][1]["content"]
+    assert json.loads(dynamic[0]["text"]) == {
+        "current_program": second_request.program, "current_metrics": second_current["metrics"],
+        "recent_attempts": previous[-4:], "auto": second_request.auto_context,
+    }
+    assert [item["image_url"] for item in dynamic if item["type"] == "input_image"] == [
+        second_current["map_image"], second_current["error_image"],
+    ]
+    assert not any("prompt_cache_breakpoint" in item for item in dynamic)
 
 
 def test_health_and_bootstrap_expose_requested_tier(monkeypatch):

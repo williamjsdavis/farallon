@@ -31,6 +31,8 @@ from geology.scoring import MapScorer, mismatch_rgba, prepare_boundary_mask
 from geology.search import refine_history
 from geology.restarts import restart_history
 from geology.terrain import TerrainGrid
+from geology.cartography import fold_axes
+from geology.presentation import observed_cartography, predicted_cartography, STYLE_VERSION
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
@@ -93,6 +95,16 @@ def terrain_image() -> str:
 
 
 TERRAIN_IMAGE = terrain_image()
+with Image.open(ROOT / "data/target_source.png") as source_crop:
+    TARGET_CARTOGRAPHY = png_url(observed_cartography(source_crop, LABELS, MASK, PALETTE))
+
+
+def display_fields(history: dict, prediction: np.ndarray | None = None) -> dict:
+    if prediction is None:
+        prediction = render_map(history, XS, YS, terrain=HEIGHTS)
+    axes = fold_axes(history, META["bounds"])
+    return {"cartographic_map_image": png_url(predicted_cartography(prediction, PALETTE, axes, META["bounds"])),
+            "fold_axes": axes, "cartographic_style": STYLE_VERSION}
 
 
 @lru_cache(maxsize=8)
@@ -155,6 +167,7 @@ def render_result(history: dict, volume: bool = True, resolution: int = 96) -> d
     rgba[~MASK, 3] = 0
     payload["observed_map_image"] = png_url(rgba)
     payload["error_image"] = png_url(mismatch_rgba(prediction, LABELS, MASK))
+    payload.update(display_fields(history, prediction))
     payload["timings"] = {"map_ms": map_ms, "volume_ms": volume_ms, "score_ms": score_ms,
                           "encode_ms": (perf_counter() - encode_start) * 1000,
                           "generation_ms": map_ms + volume_ms,
@@ -203,7 +216,8 @@ def health():
     return {"ok": True, "model": MODEL, "reasoning_effort": EFFORT,
             "requested_service_tier": SERVICE_TIER,
             "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
-            "api_key_available": bool(os.getenv("OPENAI_API_KEY")), "warmup_ms": WARMUP_MS}
+            "api_key_available": bool(os.getenv("OPENAI_API_KEY")), "warmup_ms": WARMUP_MS,
+            "iteration_active": ITERATION_LOCK.locked()}
 
 
 @app.get("/api/bootstrap")
@@ -217,6 +231,8 @@ async def bootstrap():
 
 @app.get("/api/image/{name}")
 def image_file(name: str):
+    if name == "target-cartography":
+        return Response(base64.b64decode(TARGET_CARTOGRAPHY.split(",", 1)[1]), media_type="image/png")
     if name == "terrain":
         return Response(base64.b64decode(TERRAIN_IMAGE.split(",", 1)[1]), media_type="image/png")
     files = {"target": ROOT / "data/target.png", "source": ROOT / "data/target_source.png",
@@ -273,6 +289,8 @@ means ZERO OFFSET to that terrain, not a horizontal plane. Units must remain
 strata(levels=[six strictly increasing contact elevations in km], units=[1,2,3,4,5,6,7])
 anticline(x=..., y=..., azimuth=..., uplift=..., dip_ne=..., dip_sw=..., hinge=...,
           nw_length=..., se_length=..., plunge_nw=..., plunge_se=...)
+syncline(x=..., y=..., azimuth=..., uplift=..., dip_ne=..., dip_sw=..., hinge=...,
+         nw_length=..., se_length=..., plunge_nw=..., plunge_se=...)
 tilt(x=...,y=...,z=...,azimuth=...,angle=...)
 fault(x=...,y=...,z=...,azimuth=...,dip=...,slip=...)
 erode(level=0)
@@ -292,6 +310,9 @@ The program lifts previously created rocks by F. Large plunge closes the ends of
 With plunge=0, that end never closes regardless of length. Increasing limb dip narrows
 its outcrop. A smaller hinge tightens curvature. Reverse coordinates classify z-F.
 A second anticline adds its uplift to the first. Parameters bounds are supplied below.
+Syncline uses the same nonnegative uplift MAGNITUDE and geometry, but lowers rocks
+by F (reverse coordinates classify z+F). Add one only when visual evidence calls for
+a downfold; never label the flat gap beside an anticline as a syncline automatically.
 
 Return JSON following the schema. `program` must contain the entire executable revised
 history. `headline` is a short human-readable change; `observation` is at most2 sentences
@@ -305,27 +326,40 @@ Numerical refinements and actual measurements, not your own assessment, decide a
 async def propose(request: IterationRequest, current: dict) -> dict:
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("Set OPENAI_API_KEY in the local .env file, then restart the server.")
-    info = {"bounds_km": META["bounds"], "image_axes": "top=north/right=east",
-            "legend": [{k: e[k] for k in ("id", "name", "color", "age")} for e in META["palette"]],
-            "observed_fraction": META["labeledFraction"], "current_program": request.program,
-            "current_metrics": current["metrics"], "parameter_bounds": PARAM_SPECS,
-            "terrain": {"source": TERRAIN_META["source"], "datum_m": TERRAIN_META["datum_m"],
-                        "min_z_km": float(HEIGHTS.min()), "max_z_km": float(HEIGHTS.max()),
-                        "height_samples_5x5_north_up_km": HEIGHTS[np.ix_(np.linspace(0,len(YS)-1,5).astype(int), np.linspace(0,len(XS)-1,5).astype(int))].round(4).tolist()},
-            "recent_attempts": [p for p in request.previous if p.get("scene_id") == SCENE_ID and p.get("baseline_id") == BASELINE_ID][-4:]}
+    reference_info = {
+        "bounds_km": META["bounds"], "image_axes": "top=north/right=east",
+        "legend": [{k: e[k] for k in ("id", "name", "color", "age")} for e in META["palette"]],
+        "observed_fraction": META["labeledFraction"], "parameter_bounds": PARAM_SPECS,
+        "terrain": {"source": TERRAIN_META["source"], "datum_m": TERRAIN_META["datum_m"],
+                    "min_z_km": float(HEIGHTS.min()), "max_z_km": float(HEIGHTS.max()),
+                    "height_samples_5x5_north_up_km": HEIGHTS[np.ix_(np.linspace(0,len(YS)-1,5).astype(int), np.linspace(0,len(XS)-1,5).astype(int))].round(4).tolist()},
+    }
+    dynamic_info = {
+        "current_program": request.program, "current_metrics": current["metrics"],
+        "recent_attempts": [p for p in request.previous if p.get("scene_id") == SCENE_ID and p.get("baseline_id") == BASELINE_ID][-4:],
+    }
     if request.auto_context is not None:
-        info["auto"] = request.auto_context
-    images = [
+        dynamic_info["auto"] = request.auto_context
+    reference_images = [
         ("Original map with legend; only the NW crop is scored:", file_url(ROOT / META["sourceImage"])),
         ("Clean observed NW target; transparent gaps are unobserved. Same bounds as prediction:", file_url(ROOT / "data/target.png")),
-        ("Current predicted surface, same north-up frame and geological colors:", current["map_image"]),
-        ("Disagreement overlay: red is mismatch; green is agreement; transparent is unobserved:", current["error_image"]),
         ("Fixed USGS terrain in the same frame: dark teal is low elevation, pale yellow is high; shading indicates relief:", TERRAIN_IMAGE),
     ]
-    content: list[dict] = [{"type": "input_text", "text": json.dumps(info)}]
-    for label, url in images:
-        content += [{"type": "input_text", "text": label},
-                    {"type": "input_image", "image_url": url, "detail": "high"}]
+    dynamic_images = [
+        ("Current predicted surface, same north-up frame and geological colors:", current["map_image"]),
+        ("Disagreement overlay: red is mismatch; green is agreement; transparent is unobserved:", current["error_image"]),
+    ]
+    reference_content: list[dict] = []
+    dynamic_content: list[dict] = [{"type": "input_text", "text": json.dumps(dynamic_info)}]
+    for content, images in ((reference_content, reference_images), (dynamic_content, dynamic_images)):
+        for label, url in images:
+            content += [{"type": "input_text", "text": label},
+                        {"type": "input_image", "image_url": url, "detail": "high"}]
+    # GPT-5.6+ supports an explicit breakpoint on input_text. Cache the fixed
+    # observations and instructions; changing histories/images follow this boundary.
+    # https://developers.openai.com/api/docs/guides/prompt-caching
+    reference_content.append({"type": "input_text", "text": json.dumps(reference_info, sort_keys=True),
+                              "prompt_cache_breakpoint": {"mode": "explicit"}})
     schema = {"type": "object", "properties": {
         "headline": {"type": "string"}, "observation": {"type": "string"},
         "expected_effect": {"type": "string"}, "program": {"type": "string"},
@@ -336,7 +370,11 @@ async def propose(request: IterationRequest, current: dict) -> dict:
         response = await client.responses.create(
             model=MODEL, reasoning={"effort": EFFORT}, max_output_tokens=3500,
             service_tier=SERVICE_TIER,
-            instructions=SYSTEM_PROMPT, input=[{"role": "user", "content": content}],
+            prompt_cache_key=f"farallon-observations-v1:{SCENE_ID}",
+            prompt_cache_options={"mode": "explicit", "ttl": "30m"},
+            instructions=SYSTEM_PROMPT,
+            input=[{"role": "user", "content": reference_content},
+                   {"role": "user", "content": dynamic_content}],
             text={"format": {"type": "json_schema", "name": "geological_proposal", "strict": True, "schema": schema}})
     if response.status != "completed":
         raise RuntimeError("The model did not finish its proposal. Try the iteration again.")
@@ -605,6 +643,10 @@ def replay(run_id: str):
     record = json.loads(path.read_text())
     if record.get("scene_id") != SCENE_ID or record.get("baseline_id") != BASELINE_ID:
         raise HTTPException(409, "This recording belongs to an earlier terrain or starting history. Use the current scene's recordings.")
+    # Refresh only presentation for archived runs. Recorded scores, raw images,
+    # timings and the file on disk retain their original provenance.
+    if record["result"].get("program"):
+        record["result"].update(display_fields(canonical(record["result"]["program"])))
     return record
 
 

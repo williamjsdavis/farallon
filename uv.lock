@@ -94,7 +94,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1" },
     { name = "numba", specifier = ">=0.63,<0.68" },
     { name = "numpy", specifier = ">=2.2,<2.6" },
-    { name = "openai", specifier = ">=2,<3" },
+    { name = "openai", specifier = ">=2.54,<3" },
     { name = "pillow", specifier = ">=11,<13" },
     { name = "python-dotenv", specifier = ">=1,<2" },
     { name = "scipy", specifier = ">=1.15,<1.19" },

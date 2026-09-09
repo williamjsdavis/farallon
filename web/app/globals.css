@@ -282,6 +282,21 @@ h2 {
 .map-image.difference {
   background: #313c40;
 }
+.map-image.cartographic img {
+  image-rendering: auto;
+}
+.fold-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 12px;
+  margin-top: 6px;
+  color: #8fa1ad;
+  font-size: 9px;
+  line-height: 1.5;
+}
+.api-timing {
+  color: #a9c8ba;
+}
 .north-arrow {
   position: absolute;
   top: 9px;

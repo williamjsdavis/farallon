@@ -1,0 +1,59 @@
+{
+  "validated_at": "2026-09-09T04:24:15.624959+00:00",
+  "model": "gpt-6-astra",
+  "reasoning_effort": "low",
+  "requested_service_tier": "fast",
+  "scene_id": "sheep-023fcbb758811c9a",
+  "baseline_id": "9a229952fd019ab7",
+  "max_calls": 2,
+  "purpose": "Verify explicit cache compatibility and stable-prefix reuse across changed geology; not a latency benchmark.",
+  "samples": [
+    {
+      "call": 1,
+      "state": "completed",
+      "input_history_changed_from_baseline": false,
+      "model_ms": 13234.168708091602,
+      "program_valid": true,
+      "requested_service_tier": "fast",
+      "service_tier": "fast",
+      "usage": {
+        "input_tokens": 4364,
+        "input_tokens_details": {
+          "cache_write_tokens": 3935,
+          "cached_tokens": 0
+        },
+        "output_tokens": 610,
+        "output_tokens_details": {
+          "reasoning_tokens": 288
+        },
+        "total_tokens": 4974
+      },
+      "fixed_prefix_sha256": "d382a64b4d8934550ab66e3e9cc0b87c494af9f2b647614dd8cfb6b5bf9f3a66"
+    },
+    {
+      "call": 2,
+      "state": "completed",
+      "input_history_changed_from_baseline": true,
+      "model_ms": 12842.20379195176,
+      "program_valid": true,
+      "requested_service_tier": "fast",
+      "service_tier": "fast",
+      "usage": {
+        "input_tokens": 4917,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 3935
+        },
+        "output_tokens": 614,
+        "output_tokens_details": {
+          "reasoning_tokens": 302
+        },
+        "total_tokens": 5531
+      },
+      "fixed_prefix_sha256": "d382a64b4d8934550ab66e3e9cc0b87c494af9f2b647614dd8cfb6b5bf9f3a66"
+    }
+  ],
+  "fixed_prefix_identical": true,
+  "second_request_cached_tokens": 3935,
+  "success": true
+}

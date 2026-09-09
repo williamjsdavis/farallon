@@ -1,0 +1,945 @@
+{
+  "schemaVersion": 1,
+  "source": "assets/Geological-map-of-Sheep-Mountain-anticline-The-Bighorn-River-dissects-the-fold.webp",
+  "sourceSHA256": "df0054eeb1823ee849edc29020d6a75e801d25fff6f0225fc1278674ae6bdbeb",
+  "sourceImageDimensions": [
+    697,
+    671
+  ],
+  "sourceCropLTRB": [
+    20,
+    50,
+    286,
+    250
+  ],
+  "units": [
+    {
+      "id": 1,
+      "name": "Madison",
+      "age": "Mississippian",
+      "currentRGB": [
+        137,
+        63,
+        124
+      ],
+      "recommendedRGB": [
+        137,
+        63,
+        124
+      ],
+      "recommendedHex": "#893f7c",
+      "legendSampleLTRB": [
+        13,
+        628,
+        32,
+        636
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          137.0,
+          63.0,
+          124.0
+        ],
+        "modeRGB": [
+          137,
+          63,
+          124
+        ],
+        "modeCount": 68,
+        "p10RGB": [
+          129.1,
+          63.0,
+          116.0
+        ],
+        "p90RGB": [
+          137.0,
+          69.0,
+          126.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 122,
+      "nativeCropInterior": {
+        "count": 1,
+        "medianRGB": [
+          139.0,
+          66.0,
+          121.0
+        ],
+        "modeRGB": [
+          139,
+          66,
+          121
+        ],
+        "modeCount": 1,
+        "p10RGB": [
+          139.0,
+          66.0,
+          121.0
+        ],
+        "p90RGB": [
+          139.0,
+          66.0,
+          121.0
+        ]
+      },
+      "targetPixels": 147,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          927,
+          141,
+          934
+        ],
+        "count": 133,
+        "medianRGB": [
+          139.0,
+          62.0,
+          125.0
+        ],
+        "modeRGB": [
+          139,
+          62,
+          125
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          139.0,
+          62.0,
+          125.0
+        ],
+        "p90RGB": [
+          139.0,
+          62.0,
+          125.0
+        ],
+        "currentMinusMedian": [
+          -2.0,
+          1.0,
+          -1.0
+        ],
+        "euclideanDifference": 2.449489742783178
+      }
+    },
+    {
+      "id": 2,
+      "name": "Amsden",
+      "age": "Pennsylvanian",
+      "currentRGB": [
+        33,
+        75,
+        138
+      ],
+      "recommendedRGB": [
+        33,
+        75,
+        138
+      ],
+      "recommendedHex": "#214b8a",
+      "legendSampleLTRB": [
+        13,
+        605,
+        32,
+        613
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          33.0,
+          75.0,
+          138.0
+        ],
+        "modeRGB": [
+          33,
+          74,
+          142
+        ],
+        "modeCount": 28,
+        "p10RGB": [
+          33.0,
+          74.0,
+          136.0
+        ],
+        "p90RGB": [
+          36.0,
+          76.0,
+          143.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 151,
+      "nativeCropInterior": {
+        "count": 16,
+        "medianRGB": [
+          31.5,
+          74.5,
+          135.5
+        ],
+        "modeRGB": [
+          29,
+          75,
+          139
+        ],
+        "modeCount": 3,
+        "p10RGB": [
+          29.0,
+          72.0,
+          130.0
+        ],
+        "p90RGB": [
+          36.5,
+          76.0,
+          139.0
+        ]
+      },
+      "targetPixels": 195,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          898,
+          141,
+          905
+        ],
+        "count": 133,
+        "medianRGB": [
+          33.0,
+          75.0,
+          137.0
+        ],
+        "modeRGB": [
+          33,
+          75,
+          137
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          33.0,
+          75.0,
+          137.0
+        ],
+        "p90RGB": [
+          33.0,
+          75.0,
+          137.0
+        ],
+        "currentMinusMedian": [
+          0.0,
+          0.0,
+          1.0
+        ],
+        "euclideanDifference": 1.0
+      }
+    },
+    {
+      "id": 3,
+      "name": "Tensleep",
+      "age": "Pennsylvanian",
+      "currentRGB": [
+        46,
+        111,
+        170
+      ],
+      "recommendedRGB": [
+        46,
+        111,
+        170
+      ],
+      "recommendedHex": "#2e6faa",
+      "legendSampleLTRB": [
+        13,
+        581,
+        32,
+        589
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          46.0,
+          111.0,
+          170.0
+        ],
+        "modeRGB": [
+          48,
+          112,
+          168
+        ],
+        "modeCount": 22,
+        "p10RGB": [
+          45.0,
+          109.1,
+          165.0
+        ],
+        "p90RGB": [
+          50.0,
+          113.0,
+          172.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 1558,
+      "nativeCropInterior": {
+        "count": 1104,
+        "medianRGB": [
+          48.0,
+          112.0,
+          170.0
+        ],
+        "modeRGB": [
+          49,
+          112,
+          171
+        ],
+        "modeCount": 97,
+        "p10RGB": [
+          45.0,
+          110.0,
+          166.0
+        ],
+        "p90RGB": [
+          51.0,
+          113.0,
+          173.0
+        ]
+      },
+      "targetPixels": 1911,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          868,
+          141,
+          875
+        ],
+        "count": 133,
+        "medianRGB": [
+          48.0,
+          111.0,
+          170.0
+        ],
+        "modeRGB": [
+          48,
+          111,
+          170
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          48.0,
+          111.0,
+          170.0
+        ],
+        "p90RGB": [
+          48.0,
+          111.0,
+          170.0
+        ],
+        "currentMinusMedian": [
+          -2.0,
+          0.0,
+          0.0
+        ],
+        "euclideanDifference": 2.0
+      }
+    },
+    {
+      "id": 4,
+      "name": "Phosphoria",
+      "age": "Permian",
+      "currentRGB": [
+        114,
+        154,
+        200
+      ],
+      "recommendedRGB": [
+        114,
+        154,
+        200
+      ],
+      "recommendedHex": "#729ac8",
+      "legendSampleLTRB": [
+        13,
+        557,
+        32,
+        565
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          114.0,
+          154.0,
+          200.0
+        ],
+        "modeRGB": [
+          113,
+          153,
+          203
+        ],
+        "modeCount": 15,
+        "p10RGB": [
+          112.1,
+          153.0,
+          196.0
+        ],
+        "p90RGB": [
+          116.0,
+          155.0,
+          204.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 2827,
+      "nativeCropInterior": {
+        "count": 1838,
+        "medianRGB": [
+          116.0,
+          155.0,
+          200.0
+        ],
+        "modeRGB": [
+          116,
+          156,
+          201
+        ],
+        "modeCount": 183,
+        "p10RGB": [
+          112.0,
+          153.0,
+          196.0
+        ],
+        "p90RGB": [
+          118.0,
+          156.0,
+          203.0
+        ]
+      },
+      "targetPixels": 3484,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          838,
+          141,
+          845
+        ],
+        "count": 133,
+        "medianRGB": [
+          115.0,
+          155.0,
+          200.0
+        ],
+        "modeRGB": [
+          115,
+          155,
+          200
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          115.0,
+          155.0,
+          200.0
+        ],
+        "p90RGB": [
+          115.0,
+          155.0,
+          200.0
+        ],
+        "currentMinusMedian": [
+          -1.0,
+          -1.0,
+          0.0
+        ],
+        "euclideanDifference": 1.4142135623730951
+      }
+    },
+    {
+      "id": 5,
+      "name": "Triassic",
+      "age": "Triassic",
+      "currentRGB": [
+        177,
+        203,
+        230
+      ],
+      "recommendedRGB": [
+        177,
+        203,
+        230
+      ],
+      "recommendedHex": "#b1cbe6",
+      "legendSampleLTRB": [
+        13,
+        534,
+        32,
+        542
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          177.0,
+          203.0,
+          230.0
+        ],
+        "modeRGB": [
+          177,
+          202,
+          230
+        ],
+        "modeCount": 51,
+        "p10RGB": [
+          176.0,
+          202.0,
+          226.0
+        ],
+        "p90RGB": [
+          178.0,
+          203.0,
+          230.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 3683,
+      "nativeCropInterior": {
+        "count": 2217,
+        "medianRGB": [
+          177.0,
+          202.0,
+          229.0
+        ],
+        "modeRGB": [
+          177,
+          202,
+          230
+        ],
+        "modeCount": 95,
+        "p10RGB": [
+          174.0,
+          199.0,
+          224.0
+        ],
+        "p90RGB": [
+          181.0,
+          205.0,
+          234.0
+        ]
+      },
+      "targetPixels": 4541,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          808,
+          141,
+          815
+        ],
+        "count": 133,
+        "medianRGB": [
+          176.0,
+          202.0,
+          229.0
+        ],
+        "modeRGB": [
+          176,
+          202,
+          229
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          176.0,
+          202.0,
+          229.0
+        ],
+        "p90RGB": [
+          176.0,
+          202.0,
+          229.0
+        ],
+        "currentMinusMedian": [
+          1.0,
+          1.0,
+          1.0
+        ],
+        "euclideanDifference": 1.7320508075688772
+      }
+    },
+    {
+      "id": 6,
+      "name": "Jurassic",
+      "age": "Jurassic",
+      "currentRGB": [
+        212,
+        223,
+        228
+      ],
+      "recommendedRGB": [
+        212,
+        223,
+        228
+      ],
+      "recommendedHex": "#d4dfe4",
+      "legendSampleLTRB": [
+        13,
+        510,
+        32,
+        518
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          212.0,
+          223.0,
+          228.0
+        ],
+        "modeRGB": [
+          212,
+          223,
+          228
+        ],
+        "modeCount": 63,
+        "p10RGB": [
+          211.0,
+          221.0,
+          226.0
+        ],
+        "p90RGB": [
+          214.0,
+          225.0,
+          230.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 19330,
+      "nativeCropInterior": {
+        "count": 16738,
+        "medianRGB": [
+          212.0,
+          223.0,
+          228.0
+        ],
+        "modeRGB": [
+          212,
+          223,
+          228
+        ],
+        "modeCount": 7501,
+        "p10RGB": [
+          211.0,
+          222.0,
+          226.0
+        ],
+        "p90RGB": [
+          214.0,
+          224.0,
+          229.0
+        ]
+      },
+      "targetPixels": 23832,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          778,
+          141,
+          785
+        ],
+        "count": 133,
+        "medianRGB": [
+          211.0,
+          222.0,
+          228.0
+        ],
+        "modeRGB": [
+          211,
+          222,
+          228
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          211.0,
+          222.0,
+          228.0
+        ],
+        "p90RGB": [
+          211.0,
+          222.0,
+          228.0
+        ],
+        "currentMinusMedian": [
+          1.0,
+          1.0,
+          0.0
+        ],
+        "euclideanDifference": 1.4142135623730951
+      }
+    },
+    {
+      "id": 7,
+      "name": "Cretaceous",
+      "age": "Cretaceous",
+      "currentRGB": [
+        147,
+        200,
+        155
+      ],
+      "recommendedRGB": [
+        147,
+        200,
+        155
+      ],
+      "recommendedHex": "#93c89b",
+      "legendSampleLTRB": [
+        13,
+        485,
+        32,
+        493
+      ],
+      "legend": {
+        "count": 152,
+        "medianRGB": [
+          147.0,
+          200.0,
+          155.0
+        ],
+        "modeRGB": [
+          146,
+          201,
+          155
+        ],
+        "modeCount": 24,
+        "p10RGB": [
+          144.0,
+          199.0,
+          155.0
+        ],
+        "p90RGB": [
+          149.0,
+          202.0,
+          159.0
+        ]
+      },
+      "currentMinusLegendMedian": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "nativeCropObservedPixels": 7701,
+      "nativeCropInterior": {
+        "count": 7285,
+        "medianRGB": [
+          146.0,
+          201.0,
+          157.0
+        ],
+        "modeRGB": [
+          146,
+          201,
+          157
+        ],
+        "modeCount": 5485,
+        "p10RGB": [
+          146.0,
+          201.0,
+          157.0
+        ],
+        "p90RGB": [
+          147.0,
+          202.0,
+          158.0
+        ]
+      },
+      "targetPixels": 9482,
+      "mapStatsCaveat": "Conditional on the existing color classifier; >1.5 native pixels from each class edge. This is a compression consistency check, not independent class validation.",
+      "renderedPDF": {
+        "sampleLTRB": [
+          122,
+          748,
+          141,
+          755
+        ],
+        "count": 133,
+        "medianRGB": [
+          146.0,
+          200.0,
+          157.0
+        ],
+        "modeRGB": [
+          146,
+          200,
+          157
+        ],
+        "modeCount": 133,
+        "p10RGB": [
+          146.0,
+          200.0,
+          157.0
+        ],
+        "p90RGB": [
+          146.0,
+          200.0,
+          157.0
+        ],
+        "currentMinusMedian": [
+          1.0,
+          0.0,
+          -2.0
+        ],
+        "euclideanDifference": 2.23606797749979
+      }
+    }
+  ],
+  "recommendation": "Retain the existing RGB palette: every entry equals its source WEBP legend median. Display gaps and contact width dominate the visual difference; do not change labels or masks to improve appearance.",
+  "recommendedDisplayStyle": "C: canonical observed interiors with source linework/Quaternary context, and independently antialiased predicted unit contacts. Keep raw predicted images and scoring arrays separate.",
+  "displayFindings": [
+    "A paints all missing observations near-black, including yellow Quaternary, and heavily obscures the narrow mapped core.",
+    "B fills 5292 one-pixel display gaps (8.07% of the raster) but does not recover reliable observations of the thin units. Its benefit remains modest at 320-pixel app-panel width.",
+    "C most closely matches the supplied cartography without inventing covered geology. The source-like image contains context that is not part of the score; disclose that distinction.",
+    "Render the antialiased cartographic prediction with normal image sampling, not CSS image-rendering:pixelated, to keep subpixel contacts continuous at actual panel size.",
+    "Madison has 147 and Amsden 195 scored target pixels. Their native crop interiors (>1.5px from class edges) contain only 1 and 16 pixels; apparent width is not reliable evidence for precise geological thickness."
+  ],
+  "prediction": {
+    "record": "data/runs/be7c9c996629.json",
+    "sceneId": "sheep-023fcbb758811c9a",
+    "program": "strata(levels=[-1.110192034028927, -1.011935755473623, -0.8638220786754812, -0.6884639339690292, -0.4671130972860516, 0.10362116074247105], units=[1, 2, 3, 4, 5, 6, 7])\nanticline(x=3.7, y=1.35, azimuth=127.02712901675295, uplift=1.452, dip_ne=62.712566847213395, dip_sw=42.75, hinge=0.04670750729373527, nw_length=1.4004853443772263, se_length=4.0, plunge_nw=12.95438469433989, plunge_se=0.0)\nerode(level=0.0)",
+    "metrics": {
+      "miou": 0.5231756384607175,
+      "accuracy": 0.8134520095430354,
+      "boundary_error_px": 22.159515437345096,
+      "score": 0.46158037727528106,
+      "per_unit": {
+        "1": 0.775,
+        "2": 0.15127175368139223,
+        "3": 0.3149946062567422,
+        "4": 0.3175375502432833,
+        "5": 0.532344793873228,
+        "6": 0.814712918660287,
+        "7": 0.7563678465100894
+      },
+      "evaluated_pixels": 43592,
+      "target_contact_pixels": 2952,
+      "prediction_contact_pixels": 4759
+    },
+    "selection": "Highest combined score among saved records in this scene, unless --record is provided."
+  },
+  "styles": {
+    "A": {
+      "gapRGB": [
+        25,
+        29,
+        34
+      ],
+      "predictedContactWidthTargetPixels": 1.0,
+      "caveat": "Black missing-data gaps resemble geological linework and can conceal very thin units. This treatment merges cover and uncertainty visually."
+    },
+    "B": {
+      "displayFillPixels": 5292,
+      "displayFillFractionOfRaster": 0.08074951171875,
+      "displayFillRule": "Only reason3, nearest observed pixel <=1 raster pixel, >1.5 pixels from Quaternary/outside; nearest unit for display only.",
+      "coverRGB": [
+        251,
+        240,
+        141
+      ],
+      "predictedContacts": "none",
+      "caveat": "Interpolated color is not a geological observation. Keep scoring mask and explicit display-fill note."
+    },
+    "C": {
+      "gapRule": "Source WEBP colors retained where target unobserved; pale outside, source yellow cover and dark printed linework.",
+      "predictedContactRGB": [
+        44,
+        43,
+        42
+      ],
+      "predictedContactWidthTargetPixels": 0.5,
+      "contactRendering": "Continuous class-edge segments at 4x resolution, 2-pixel strokes, Lanczos-downsampled coverage blended over full raw prediction.",
+      "caveat": "Source annotations and antialiasing remain contextual imagery, not scored observations; predicted lines denote unit boundaries only."
+    }
+  },
+  "thinUnitContourAudit": [
+    {
+      "id": 1,
+      "predictedPixels": 1222,
+      "aContourPixels": 234,
+      "aContourFraction": 0.19148936170212766
+    },
+    {
+      "id": 2,
+      "predictedPixels": 2453,
+      "aContourPixels": 554,
+      "aContourFraction": 0.2258459029759478
+    },
+    {
+      "id": 3,
+      "predictedPixels": 3517,
+      "aContourPixels": 709,
+      "aContourFraction": 0.20159226613591127
+    },
+    {
+      "id": 4,
+      "predictedPixels": 4500,
+      "aContourPixels": 829,
+      "aContourFraction": 0.18422222222222223
+    },
+    {
+      "id": 5,
+      "predictedPixels": 6746,
+      "aContourPixels": 883,
+      "aContourFraction": 0.13089238067002668
+    },
+    {
+      "id": 6,
+      "predictedPixels": 34525,
+      "aContourPixels": 1023,
+      "aContourFraction": 0.02963070238957277
+    },
+    {
+      "id": 7,
+      "predictedPixels": 12573,
+      "aContourPixels": 436,
+      "aContourFraction": 0.03467748349638113
+    }
+  ],
+  "fixedObservationPixels": 43592,
+  "fixedObservationFraction": 0.6651611328125,
+  "targetNPZSHA256": "9e204840381639172c4530763c41979ccd8baf08d4fa5dae8caedf1412e9f479",
+  "targetInputsUnchanged": true,
+  "labelsSHA256": "3f4e465a4764b623f2fcae26a300679030a0bba48e9f1a9b14d081be29170477",
+  "maskSHA256": "c7982b98e39e8a1e0dc50701e6d11d35b67f7eb545b4c70f1e53bb2c9f1ce170",
+  "sourceUnchanged": true,
+  "pdfComparison": {
+    "renderPath": "/tmp/farallon-fiore-inspect-1-page-1.png",
+    "renderSHA256": "61c2f37ed09e85573fb6a1607268ba99a5f7a8486e7945ab81cf2b6840070997",
+    "renderDimensions": [
+      1500,
+      1941
+    ],
+    "caveat": "PDFKit rendered page 409 at 1500px width. Rendered RGB depends on color conversion; this is not extraction of original vector color operators."
+  },
+  "reviewDirectory": "/private/tmp/farallon-map-review",
+  "contactSheet": "/private/tmp/farallon-map-review/contact_sheet.png",
+  "appSizeContactSheet": "/private/tmp/farallon-map-review/contact_sheet_app_size.png"
+}

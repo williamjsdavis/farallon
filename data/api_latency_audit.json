@@ -1,0 +1,184 @@
+{
+  "created_at": "2026-09-09T04:12:32.155051+00:00",
+  "model": "gpt-6-astra",
+  "reasoning": {
+    "effort": "low"
+  },
+  "scene_id": "sheep-023fcbb758811c9a",
+  "baseline_id": "9a229952fd019ab7",
+  "prompt_sha256": "b549ea894288b9e0b2a8be5145348e1714581953c13be9cd7c2de85a579af1d1",
+  "request_bytes": 298405,
+  "image_count": 5,
+  "prompt_description": "Production baseline request: full map, observed crop, predicted surface, mismatch, fixed terrain; strict JSON proposal schema.",
+  "transport": "Responses streaming, fresh client per call, retries disabled",
+  "order": [
+    "default",
+    "fast",
+    "default",
+    "fast"
+  ],
+  "timing_note": "First visible text is first nonempty output_text.delta, excluding metadata events and hidden reasoning. Wall includes client setup/network/API/stream consumption, excludes simulator and numerical search.",
+  "samples": [
+    {
+      "index": 1,
+      "pair": 1,
+      "requested_service_tier": "default",
+      "state": "completed",
+      "started_at": "2026-09-09T04:12:32.155595+00:00",
+      "service_tier": "default",
+      "status": "completed",
+      "wall_ms": 16057.575791026466,
+      "first_event_ms": 1994.578583049588,
+      "first_visible_text_ms": 11372.358874999918,
+      "text_generation_ms": 4685.216916026548,
+      "event_count": 319,
+      "text_delta_count": 309,
+      "text_characters": 1008,
+      "usage": {
+        "input_tokens": 4260,
+        "input_tokens_details": {
+          "cache_write_tokens": 4257,
+          "cached_tokens": 0
+        },
+        "output_tokens": 581,
+        "output_tokens_details": {
+          "reasoning_tokens": 260
+        },
+        "total_tokens": 4841
+      },
+      "program_valid": true
+    },
+    {
+      "index": 2,
+      "pair": 1,
+      "requested_service_tier": "fast",
+      "state": "completed",
+      "started_at": "2026-09-09T04:12:48.221317+00:00",
+      "service_tier": "fast",
+      "status": "completed",
+      "wall_ms": 14583.49145797547,
+      "first_event_ms": 1022.9740829672664,
+      "first_visible_text_ms": 8588.771249982528,
+      "text_generation_ms": 5994.720207992941,
+      "event_count": 311,
+      "text_delta_count": 301,
+      "text_characters": 972,
+      "usage": {
+        "input_tokens": 4260,
+        "input_tokens_details": {
+          "cache_write_tokens": 4257,
+          "cached_tokens": 0
+        },
+        "output_tokens": 646,
+        "output_tokens_details": {
+          "reasoning_tokens": 333
+        },
+        "total_tokens": 4906
+      },
+      "program_valid": true
+    },
+    {
+      "index": 3,
+      "pair": 2,
+      "requested_service_tier": "default",
+      "state": "completed",
+      "started_at": "2026-09-09T04:13:02.806540+00:00",
+      "service_tier": "default",
+      "status": "completed",
+      "wall_ms": 16146.428292035125,
+      "first_event_ms": 1197.6399589329958,
+      "first_visible_text_ms": 11025.47312504612,
+      "text_generation_ms": 5120.955166989006,
+      "event_count": 307,
+      "text_delta_count": 297,
+      "text_characters": 963,
+      "usage": {
+        "input_tokens": 4260,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 4257
+        },
+        "output_tokens": 542,
+        "output_tokens_details": {
+          "reasoning_tokens": 233
+        },
+        "total_tokens": 4802
+      },
+      "program_valid": true
+    },
+    {
+      "index": 4,
+      "pair": 2,
+      "requested_service_tier": "fast",
+      "state": "completed",
+      "started_at": "2026-09-09T04:13:18.957326+00:00",
+      "service_tier": "fast",
+      "status": "completed",
+      "wall_ms": 8254.233416984789,
+      "first_event_ms": 385.7977499719709,
+      "first_visible_text_ms": 4254.594750003889,
+      "text_generation_ms": 3999.6386669809,
+      "event_count": 318,
+      "text_delta_count": 308,
+      "text_characters": 998,
+      "usage": {
+        "input_tokens": 4260,
+        "input_tokens_details": {
+          "cache_write_tokens": 0,
+          "cached_tokens": 4257
+        },
+        "output_tokens": 491,
+        "output_tokens_details": {
+          "reasoning_tokens": 171
+        },
+        "total_tokens": 4751
+      },
+      "program_valid": true
+    }
+  ],
+  "summary": {
+    "actual_calls": 4,
+    "tier_means": {
+      "default": {
+        "wall_ms": 16102.002041530795,
+        "first_visible_text_ms": 11198.916000023019,
+        "first_event_ms": 1596.1092709912919
+      },
+      "fast": {
+        "wall_ms": 11418.86243748013,
+        "first_visible_text_ms": 6421.682999993209,
+        "first_event_ms": 704.3859164696187
+      }
+    },
+    "pairs": [
+      {
+        "pair": 1,
+        "full_response_speed_ratio": 1.101078972569689,
+        "ttft_speed_ratio": 1.3240961418110946,
+        "default_cached_tokens": 0,
+        "fast_cached_tokens": 0
+      },
+      {
+        "pair": 2,
+        "full_response_speed_ratio": 1.9561390472445952,
+        "ttft_speed_ratio": 2.5914273327761803,
+        "default_cached_tokens": 4257,
+        "fast_cached_tokens": 4257
+      }
+    ],
+    "mean_full_response_speed_ratio": 1.4101231300133013,
+    "mean_ttft_speed_ratio": 1.7439222708493805
+  },
+  "limitations": [
+    "Four sequential calls; varying reasoning and output lengths; not a statistical speed guarantee.",
+    "Measured before the stable-prefix prompt cache change and syncline prompt addition.",
+    "Streaming full-response wall time excludes simulator/search and is not browser iteration latency."
+  ],
+  "runtime_audit": {
+    "instrumented_records": 23,
+    "actual_fast": 23,
+    "downgrades": 0,
+    "median_model_ms": 10162,
+    "all_input_cache_hits_zero": true
+  }
+}

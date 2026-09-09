@@ -16,7 +16,7 @@ from numba import njit
 from .history import PARAM_SPECS, HistoryError, history_to_program, parse_history, validate_history
 
 
-_ANTICLINE, _TILT, _FAULT, _INTRUSION, _ERODE = 1, 2, 3, 4, 5
+_ANTICLINE, _TILT, _FAULT, _INTRUSION, _ERODE, _SYNCLINE = 1, 2, 3, 4, 5, 6
 _WIDTH = 16
 
 
@@ -31,7 +31,7 @@ def _pack(history: Any, replace_final_erosion: bool = False) -> tuple[np.ndarray
         if replace_final_erosion and index == len(history["events"]) - 1 and kind == "erode":
             continue
         p = np.zeros(_WIDTH, dtype=np.float64)
-        if kind == "anticline":
+        if kind in {"anticline", "syncline"}:
             if event["uplift"] == 0:
                 continue
             az = math.radians(event["azimuth"])
@@ -41,7 +41,7 @@ def _pack(history: Any, replace_final_erosion: bool = False) -> tuple[np.ndarray
                        event["nw_length"], event["se_length"],
                        math.tan(math.radians(event["plunge_nw"])),
                        math.tan(math.radians(event["plunge_se"]))]
-            code = _ANTICLINE
+            code = _ANTICLINE if kind == "anticline" else _SYNCLINE
         elif kind == "tilt":
             if event["angle"] == 0:
                 continue
@@ -108,6 +108,10 @@ def _label(x: float, y: float, z: float, codes: np.ndarray, params: np.ndarray,
                 return 0
         elif code == _ANTICLINE:
             z -= _fold_height(x, y, p)
+        elif code == _SYNCLINE:
+            # Forward subsidence is negative; inverse classification restores
+            # the point upward by the same nonnegative displacement magnitude.
+            z += _fold_height(x, y, p)
         elif code == _TILT:
             dx, dy, dz = x - p[0], y - p[1], z - p[2]
             dot = p[3] * dx + p[4] * dy

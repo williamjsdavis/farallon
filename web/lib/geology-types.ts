@@ -41,6 +41,15 @@ export type ModelResult = {
   metrics: Metrics;
   volume: Volume;
   map_image: string;
+  cartographic_map_image?: string;
+  cartographic_style?: string;
+  fold_axes?: {
+    kind: 'anticline' | 'syncline';
+    status: 'visible' | 'unavailable';
+    diagnostic: string;
+    source_event_index: number;
+    polyline: number[][];
+  }[];
   observed_map_image: string;
   error_image: string;
   timings: { generation_ms: number; total_ms: number };
@@ -64,6 +73,8 @@ export type RunRecord = {
   elapsed_ms: number;
   search: { evaluations: number; elapsed_ms: number };
   model: string;
+  requested_service_tier?: string;
+  service_tier?: string | null;
   auto?: {
     run_id: string;
     iteration: number;

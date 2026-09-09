@@ -13,7 +13,7 @@ import numpy as np
 from .history import HistoryError, PARAM_SPECS, validate_history
 
 
-_DEFORMATION = {"anticline", "tilt", "fault"}
+_DEFORMATION = {"anticline", "syncline", "tilt", "fault"}
 
 
 def _scene_history(history: Any) -> dict:

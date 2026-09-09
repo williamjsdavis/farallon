@@ -32,6 +32,14 @@ import type {
 } from '@/lib/geology-types';
 
 const percent = (v: number) => `${(v * 100).toFixed(1)}%`;
+const processingTier = (tier?: string | null) =>
+  tier === 'fast' || tier === 'priority'
+    ? 'Fast confirmed'
+    : tier === 'default'
+      ? 'Standard served'
+      : tier
+        ? `${tier} served`
+        : 'Tier not recorded';
 type SavedRun = { id: string; headline: string };
 type ReplayPlaylist = {
   title: string;
@@ -44,6 +52,7 @@ type Bootstrap = {
   baseline: ModelResult;
   api_key_available: boolean;
   model: string;
+  requested_service_tier?: string;
   terrain?: Terrain;
   scene_id?: string;
   baseline_id?: string;
@@ -142,6 +151,7 @@ export default function Home() {
   const [error, setError] = useState('');
   const [keyAvailable, setKeyAvailable] = useState(false);
   const [model, setModel] = useState('gpt-6-astra');
+  const [requestedTier, setRequestedTier] = useState<string>();
   const [cut, setCut] = useState(0.12);
   const [mapTab, setMapTab] = useState('units');
   const [lowerTab, setLowerTab] = useState('reasoning');
@@ -198,6 +208,7 @@ export default function Home() {
         show(data.baseline);
         setKeyAvailable(data.api_key_available);
         setModel(data.model);
+        setRequestedTier(data.requested_service_tier);
       })
       .catch((e) => setError(e.message));
     request<ReplayPlaylist>('replay')
@@ -546,7 +557,7 @@ export default function Home() {
     const parent = ablationParent || selected;
     const events = structuredClone(parent.history.events);
     for (const event of events)
-      if (event.type === 'anticline') {
+      if (event.type === 'anticline' || event.type === 'syncline') {
         if (feature === 'plunge') {
           event.plunge_nw = 0;
           event.plunge_se = 0;
@@ -753,7 +764,9 @@ export default function Home() {
                   ? 'FEATURE TEST'
                   : mode === 'restart'
                     ? 'RESTART SEED'
-                    : 'LIVE INFERENCE'}
+                    : requestedTier === 'fast' || requestedTier === 'priority'
+                      ? 'LIVE · FAST REQUESTED'
+                      : 'LIVE INFERENCE'}
           </small>
         </div>
       </section>
@@ -864,7 +877,7 @@ export default function Home() {
                     </span>
                   </div>
                   <div
-                    className="map-image"
+                    className={`map-image ${mapTab === 'units' ? 'cartographic' : ''}`}
                     style={{
                       aspectRatio: `${(target.bounds.xmax - target.bounds.xmin) / (target.bounds.ymax - target.bounds.ymin)}`,
                     }}
@@ -878,7 +891,9 @@ export default function Home() {
                           ? '/api/image/source'
                           : mapTab === 'terrain'
                             ? '/api/image/terrain'
-                            : '/api/image/target'
+                            : mapTab === 'units'
+                              ? '/api/image/target-cartography'
+                              : '/api/image/target'
                       }
                       alt={
                         mapTab === 'terrain'
@@ -914,7 +929,7 @@ export default function Home() {
                     </span>
                   </div>
                   <div
-                    className={`map-image ${mapTab === 'error' ? 'difference' : ''}`}
+                    className={`map-image ${mapTab === 'error' ? 'difference' : 'cartographic'}`}
                     style={{
                       aspectRatio: `${(target.bounds.xmax - target.bounds.xmin) / (target.bounds.ymax - target.bounds.ymin)}`,
                     }}
@@ -926,12 +941,12 @@ export default function Home() {
                       src={
                         mapTab === 'error'
                           ? selected.error_image
-                          : selected.map_image
+                          : selected.cartographic_map_image || selected.map_image
                       }
                       alt={
                         mapTab === 'error'
                           ? 'Red pixels show disagreement with observed geology'
-                          : 'Full predicted geological surface; only observed target pixels contribute to the score'
+                          : 'Predicted geological surface with black unit contacts and dashed model fold axes; anticline arrows point out, syncline arrows point in'
                       }
                     />
                     <span className="north-arrow">↑ N</span>
@@ -954,9 +969,23 @@ export default function Home() {
                 <span>
                   {mapTab === 'terrain'
                     ? 'Printed map coordinates give approximate registration.'
-                    : 'Full prediction shown; gaps excluded from scoring.'}
+                    : mapTab === 'units' || mapTab === 'source'
+                      ? 'Yellow = Quaternary cover. Source ink and cover are excluded from scoring.'
+                      : 'Full prediction shown; gaps excluded from scoring.'}
                 </span>
               </div>
+              {mapTab !== 'error' && (
+                <div className="fold-key">
+                  <span>Dashed model axes · anticline arrows out · syncline arrows in</span>
+                  <span>
+                    {selected.fold_axes?.some((axis) => axis.status === 'unavailable')
+                      ? 'Some axes omitted after later deformation.'
+                      : selected.fold_axes?.some((axis) => axis.status === 'visible')
+                        ? 'Axes belong to the proposed fold events.'
+                        : 'No active fold axis in this view.'}
+                  </span>
+                </div>
+              )}
             </div>
             <div className="model-panel panel">
               <div className="panel-heading">
@@ -1024,7 +1053,7 @@ export default function Home() {
                   disabled={
                     !!busy ||
                     !(ablationParent || selected).history.events.some(
-                      (event) => event.type === 'anticline',
+                      (event) => event.type === 'anticline' || event.type === 'syncline',
                     )
                   }
                   onClick={() => ablate('plunge')}
@@ -1037,7 +1066,7 @@ export default function Home() {
                   disabled={
                     !!busy ||
                     !(ablationParent || selected).history.events.some(
-                      (event) => event.type === 'anticline',
+                      (event) => event.type === 'anticline' || event.type === 'syncline',
                     )
                   }
                   onClick={() => ablate('asymmetry')}
@@ -1116,6 +1145,11 @@ export default function Home() {
                   ? `${(last.model_ms / 1000).toFixed(1)} s for last model proposal`
                   : 'Ready for the first investigation'}
               </span>
+              {last && (
+                <span className="api-timing" title={`Requested: ${last.requested_service_tier || 'not recorded'}; actual API response tier: ${last.service_tier || 'not recorded'}. API time includes image input, reasoning and output. Fast mode has no fixed end-to-end speedup.`}>
+                  {processingTier(last.service_tier)} · {(last.search.elapsed_ms / 1000).toFixed(2)} s tuning
+                </span>
+              )}
             </div>
           </section>
           <section className="reasoning-grid">
@@ -1319,6 +1353,7 @@ export default function Home() {
                             ? 'Accepted'
                             : 'Rejected'}{' '}
                         · {(run.model_ms / 1000).toFixed(1)} s proposal
+                        {' · '}{processingTier(run.service_tier)}
                       </small>
                     </div>
                     <span className={run.accepted ? 'delta' : ''}>

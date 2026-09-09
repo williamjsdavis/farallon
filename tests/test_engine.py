@@ -18,6 +18,13 @@ class HistoryTests(unittest.TestCase):
         history = parse_history(program)
         self.assertEqual(parse_history(history_to_program(history)), history)
 
+    def test_syncline_roundtrip_and_nonnegative_magnitude_bounds(self):
+        history = parse_history(BASE + "\nsyncline(x=1,y=2,uplift=1.2,plunge_se=5)\nerode(level=0)")
+        self.assertEqual(parse_history(history_to_program(history)), history)
+        for parameter in ["uplift=-.1", "uplift=10.1", "dip_ne=86", "hinge=0", "plunge_se=61"]:
+            with self.subTest(parameter=parameter), self.assertRaises(HistoryError):
+                parse_history(BASE + f"\nsyncline({parameter})")
+
     def test_program_cannot_execute_python(self):
         for fragment in ["import os", "x=3", "__import__('os').system('touch /tmp/bad')",
                          "anticline(uplift=1+2)", "anticline(**{})", "anticline(float('nan'))",
@@ -45,8 +52,28 @@ class EngineTests(unittest.TestCase):
     def test_zero_magnitude_events_are_identity(self):
         points = np.random.default_rng(4).uniform(-2, 2, size=(1000, 3))
         expected = evaluate_points(BASE, points)
-        for event in ["anticline(uplift=0)", "tilt(angle=0)", "fault(slip=0)"]:
+        for event in ["anticline(uplift=0)", "syncline(uplift=0)", "tilt(angle=0)", "fault(slip=0)"]:
             np.testing.assert_array_equal(evaluate_points(BASE + "\n" + event, points), expected)
+
+    def test_syncline_lowers_strata_and_restores_points_upward(self):
+        u, radius = .2, .1
+        displacement = 1 - (np.sqrt(u * u + radius * radius) - radius)
+        original_z = np.array([-1.2, -.8, -.3, .2])
+        program = BASE + "\nsyncline(azimuth=0,uplift=1,dip_ne=45,dip_sw=20,hinge=.1,plunge_nw=0,plunge_se=0)"
+        points = np.column_stack([-np.full(4, u), np.zeros(4), original_z - displacement])
+        np.testing.assert_array_equal(evaluate_points(program, points), [1, 2, 3, 4])
+        # With upright horizontal layers and a flat cut, opposite signed folds
+        # expose older versus younger cores, while the far field is unchanged.
+        strata = "strata(levels=[-.5,.5],units=[1,2,3])"
+        params = "(azimuth=0,uplift=1,plunge_nw=0,plunge_se=0)"
+        np.testing.assert_array_equal(render_map(strata + "\nanticline" + params, [0, 20], [0]), [[1, 2]])
+        np.testing.assert_array_equal(render_map(strata + "\nsyncline" + params, [0, 20], [0]), [[3, 2]])
+
+    def test_matching_upward_and_downward_folds_cancel(self):
+        params = "(x=.2,y=.3,uplift=.8,azimuth=135,dip_ne=60,dip_sw=20,plunge_nw=30,plunge_se=10)"
+        points = np.random.default_rng(15).uniform(-2, 2, size=(1000, 3))
+        history = BASE + "\nanticline" + params + "\nsyncline" + params
+        np.testing.assert_array_equal(evaluate_points(history, points), evaluate_points(BASE, points))
 
     def test_fold_forward_and_inverse(self):
         # A hand-computed point in the planar-ish NE limb is raised through a
