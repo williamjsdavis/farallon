@@ -24,6 +24,8 @@ npm --prefix web ci
 
 The backend reads `OPENAI_API_KEY` from the environment or a root `.env` file. See `.env.example`; do not place a key in the frontend. Defaults: `OPENAI_MODEL=gpt-6-astra`, `OPENAI_REASONING_EFFORT=low`. Restart after changing environment settings. Without a key, manual simulation and saved replay still work. Each investigation button click makes one paid API call; no model calls run automatically on page load.
 
+Fast mode is enabled on this laptop with `OPENAI_SERVICE_TIER=fast` in the ignored local `.env`. Each proposal passes this setting to the Responses API while keeping the same model, reasoning effort, images and output schema. Set it to `default` for Standard processing, or `auto` to follow the API project's setting (the application default when unset). Restart after changing it. Health/bootstrap report the requested tier; new recordings capture both `requested_service_tier` and the API's actual `service_tier`, including any downgrade. GPT-6 Astra Fast mode uses 2× the applicable Standard token rates, has no latency SLA, and is unavailable with EU data residency. See the [official Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) and [Astra pricing](https://developers.openai.com/api/docs/models/gpt-6-astra). Existing recorded rehearsal timings predate this setting.
+
 ## Present
 
 See [DEMO.md](DEMO.md) for a three-minute script. Start with **Let GPT-6 investigate**. While it reasons, orbit the model or move the cutaway. Open **History** to show the executable program. The **Mismatch** tab highlights disagreement; the same fixed observation mask is used for every model. The predicted map is shown in full, so gaps in the source cannot masquerade as predicted geological contacts.

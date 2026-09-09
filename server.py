@@ -34,6 +34,7 @@ ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-6-astra")
 EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "low")
+SERVICE_TIER = os.getenv("OPENAI_SERVICE_TIER", "auto")
 BASELINE = """# Start before deformation: seven horizontal sedimentary packages.
 strata(levels=[-1.2, -1.05, -0.92, -0.78, -0.5, -0.2], units=[1, 2, 3, 4, 5, 6, 7])
 erode(level=0)
@@ -189,6 +190,7 @@ class IterationRequest(BaseModel):
 @app.get("/api/health")
 def health():
     return {"ok": True, "model": MODEL, "reasoning_effort": EFFORT,
+            "requested_service_tier": SERVICE_TIER,
             "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
             "api_key_available": bool(os.getenv("OPENAI_API_KEY")), "warmup_ms": WARMUP_MS}
 
@@ -196,6 +198,7 @@ def health():
 @app.get("/api/bootstrap")
 async def bootstrap():
     return {"target": META, "model": MODEL, "api_key_available": bool(os.getenv("OPENAI_API_KEY")),
+            "requested_service_tier": SERVICE_TIER,
             "scene_id": SCENE_ID, "baseline_id": BASELINE_ID, "terrain": TERRAIN_META,
             "baseline_name": "Undeformed sedimentary layers",
             "baseline": await asyncio.to_thread(render_result, canonical(BASELINE))}
@@ -319,6 +322,7 @@ async def propose(request: IterationRequest, current: dict) -> dict:
     async with AsyncOpenAI(timeout=75.0, max_retries=0) as client:
         response = await client.responses.create(
             model=MODEL, reasoning={"effort": EFFORT}, max_output_tokens=3500,
+            service_tier=SERVICE_TIER,
             instructions=SYSTEM_PROMPT, input=[{"role": "user", "content": content}],
             text={"format": {"type": "json_schema", "name": "geological_proposal", "strict": True, "schema": schema}})
     if response.status != "completed":
@@ -326,6 +330,8 @@ async def propose(request: IterationRequest, current: dict) -> dict:
     proposal = json.loads(response.output_text)
     proposal["usage"] = response.usage.model_dump() if response.usage else None
     proposal["response_id"] = response.id
+    proposal["requested_service_tier"] = SERVICE_TIER
+    proposal["service_tier"] = response.service_tier
     return proposal
 
 
@@ -367,7 +373,9 @@ async def iterate(request: IterationRequest):
                           "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
                           "before": current["metrics"], "model_ms": llm_ms,
                           "search": {"evaluations": evaluations, "elapsed_ms": search_ms},
-                          "elapsed_ms": (perf_counter() - started) * 1000, "model": MODEL}
+                          "elapsed_ms": (perf_counter() - started) * 1000, "model": MODEL,
+                          "requested_service_tier": SERVICE_TIER,
+                          "service_tier": proposal.get("service_tier")}
                 run_dir = ROOT / "data/runs"
                 run_dir.mkdir(exist_ok=True)
                 (run_dir / f"{result['id']}.json").write_text(json.dumps(record))
