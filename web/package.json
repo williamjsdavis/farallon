@@ -11,7 +11,8 @@
     "start": "wrangler dev --config dist/server/wrangler.json",
     "lint": "oxlint",
     "format": "oxfmt",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:stream": "node --experimental-strip-types --test ../tests/test_event_stream.mjs"
   },
   "dependencies": {
     "@base-ui/react": "1.7.0",

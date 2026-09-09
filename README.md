@@ -22,7 +22,7 @@ uv sync
 npm --prefix web ci
 ```
 
-The backend reads `OPENAI_API_KEY` from the environment or a root `.env` file. See `.env.example`; do not place a key in the frontend. Defaults: `OPENAI_MODEL=gpt-6-astra`, `OPENAI_REASONING_EFFORT=low`. Restart after changing environment settings. Without a key, manual simulation and saved replay still work. Each investigation button click makes one paid API call; no model calls run automatically on page load.
+The backend reads `OPENAI_API_KEY` from the environment or a root `.env` file. See `.env.example`; do not place a key in the frontend. Defaults: `OPENAI_MODEL=gpt-6-astra`, `OPENAI_REASONING_EFFORT=low`. Restart after changing environment settings. Without a key, manual simulation and saved replay still work. **Let GPT-6 investigate** makes one paid proposal call. **Start auto** runs up to the chosen number of iterations, with one paid proposal per iteration. No model calls run automatically on page load.
 
 Fast mode is enabled on this laptop with `OPENAI_SERVICE_TIER=fast` in the ignored local `.env`. Each proposal passes this setting to the Responses API while keeping the same model, reasoning effort, images and output schema. Set it to `default` for Standard processing, or `auto` to follow the API project's setting (the application default when unset). Restart after changing it. Health/bootstrap report the requested tier; new recordings capture both `requested_service_tier` and the API's actual `service_tier`, including any downgrade. GPT-6 Astra Fast mode uses 2× the applicable Standard token rates, has no latency SLA, and is unavailable with EU data residency. See the [official Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) and [Astra pricing](https://developers.openai.com/api/docs/models/gpt-6-astra). Existing recorded rehearsal timings predate this setting.
 
@@ -33,6 +33,16 @@ See [DEMO.md](DEMO.md) for a three-minute script. Start with **Let GPT-6 investi
 Three genuine GPT-6 terrain rehearsal iterations are included under `data/runs/`. The explicit sequence in `data/replay.json` keeps this rehearsal separate from later investigations. **Replay next** displays the recorded programs, images, volumes, timings and measurements, with a visible replay label and step count. It stops after step three; it never wraps or appends unrelated live runs. Replay makes no model call. Your live investigation is preserved while replay is open; **Return to live** restores it. During replay, **Reset** restarts the rehearsal from undeformed layers; otherwise it resets the live investigation. New live results are saved automatically and ignored by Git; refreshing clears the displayed session but preserves recordings. Three earlier flat-surface recordings remain archived, but are excluded from this scene. Scene and baseline IDs prevent mixing incompatible measurements.
 
 The **Terrain** tab shows the measured elevations. **Vertical 1× / 2×** changes display exaggeration only; it does not change the terrain supplied to the simulator or any scores. The cutaway follows the measured ground surface. See [terrain provenance](data/TERRAIN.md) for calibration, source data and offline reproduction.
+
+## Automatic investigation
+
+Set **Iterations** to an integer from **1–100** (default **20**), then click **Start auto**. It begins from the current best live model and makes sequential proposal → simulation → measurement calls. The server enforces the 100-iteration cap. Auto mode carries the configured service tier, including this laptop's Fast setting. In replay, first click **Return to live**.
+
+The run keeps a best model for the current branch and a separate best overall, both ranked by the combined fit score below. It restarts after **four consecutive attempts without an overall improvement**, or **ten attempts in one branch**. Odd-numbered restarts use fresh undeformed strata with varied layer intervals and elevation; even-numbered restarts broadly perturb the overall best's existing geometry and strata, falling back to undeformed strata when needed. No prebuilt fold is inserted. All branches retain the same seven unit IDs, observation mask and measured terrain.
+
+While running, the viewer shows the current branch, which can score below the retained overall best. The progress line reports completed iterations, restarts and best-overall overlap. Completion, **Stop auto**, or an error returns the display to the best overall model received.
+
+**Stop auto** finishes an in-flight iteration, then starts no further proposal. Stopping during startup aborts the request. Closing or refreshing the page cancels the run; it does not resume automatically. Errors stop the run without an automatic paid retry. Completed proposals remain in `data/runs/` with auto-run, branch and iteration provenance. They do not alter the original three-step replay sequence. The displayed session is not restored automatically after a refresh.
 
 ## What runs
 
@@ -71,10 +81,11 @@ To run another bounded rehearsal (makes paid API calls):
 .venv/bin/python -m pytest -q
 npm --prefix web run lint
 npm --prefix web run typecheck
+npm --prefix web run test:stream
 npm --prefix web run build
 ```
 
-Application lint excludes unmodified generated Shadcn primitives and the starter mobile hook. Type checking covers the project. Python tests cover history validation, geological transformations, array orientation, fixed masks, scoring, search, acceptance/rejection, streaming failures and replay; tests mock the model and make no paid calls.
+Application lint excludes unmodified generated Shadcn primitives and the starter mobile hook. Type checking covers the project. `test:stream` runs the stream reader tests with Node's `--experimental-strip-types`. Python tests cover history validation, geological transformations, array orientation, fixed masks, scoring, search, acceptance/rejection, streaming failures and replay; tests mock the model and make no paid calls.
 
 ## Interpretation limits
 

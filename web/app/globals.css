@@ -743,6 +743,40 @@ footer a:hover {
   align-items: center;
   font-size: 12px;
 }
+.auto-panel {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 22px;
+  padding: 13px 16px;
+  margin-bottom: 18px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #14232d;
+}
+.auto-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+.auto-controls input {
+  width: 76px;
+  font-family: var(--font-mono);
+}
+.auto-controls > span,
+.auto-note {
+  color: #9bb0bf;
+  font-size: 12px;
+}
+.auto-status {
+  flex: 1 1 330px;
+  font-size: 14px;
+  color: #d3e1e8;
+}
+.auto-note {
+  flex-basis: 100%;
+}
 .loading-state {
   min-height: 480px;
   display: flex;

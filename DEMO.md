@@ -9,6 +9,7 @@ Open **http://localhost:3000**. The story is **visual evidence → executable hi
 - **Terrain** shows the actual cached USGS DEM: **416.1 m relief** across **6.059 × 4.139 km**. Printed map ticks provide approximate registration; details are in [data/TERRAIN.md](data/TERRAIN.md).
 - Optional full-map context: `http://localhost:3000/api/image/full`. **Source** shows the original crop; **Units** shows the fixed classified observations.
 - **Generate**, feature tests and 3D controls use local computation. They do not make another model API call.
+- Choose single-step investigation or the optional Auto sequence below. Auto starts only after **Start auto** is clicked; it never launches calls on page load.
 
 ## Talking script and clicks
 
@@ -24,6 +25,16 @@ Open **http://localhost:3000**. The story is **visual evidence → executable hi
 | 2:40–3:00 | End on the best block, **Units** and **History**. | “This is a possible history, not a unique reconstruction. The figure is only approximately registered, and considerable mismatch remains. GPT connects visual interpretation to executable hypotheses that we can inspect, measure and challenge.” |
 
 Live hypotheses and timing vary: describe the result actually shown. Read **Expected** as a prediction, not an accomplished effect. Start the next call promptly; if running behind, stop after two proposals and preserve time for the feature test and cutaway.
+
+## Optional Auto sequence
+
+For the same three-minute structure, set **Iterations** to **3** and click **Start auto** at 0:20. Skip the manual second and third investigation clicks: Auto runs them sequentially from the current best. Continue narrating the evidence, history and measured results. To end early, click **Stop auto** and wait for the current iteration to finish before the feature test or replay. The best overall model is restored when the run completes, stops or errors. Auto uses the current Fast/service-tier setting; the older rehearsal timings below are not an Auto performance guarantee.
+
+For a longer investigation, the control accepts **1–100 iterations**, defaults to **20**, and the server enforces the cap. Each iteration makes one paid proposal call. A three-iteration run shows the automatic sequence; use a larger limit to show restarts. After four attempts without an overall combined-score improvement, or ten attempts in one branch, it starts a new branch. Odd restarts use fresh undeformed layers; even restarts broadly vary the best history already found, with an undeformed fallback. It does not insert a prebuilt fold. Seven rock packages and the terrain stay fixed.
+
+Say: **“The viewer follows the current branch, while we retain the best explanation found across every branch. A restart lets us explore another starting point without losing that best model.”** Branch acceptance and overall improvement use the combined score, not overlap alone.
+
+Stopping before startup completes aborts the request. Closing or refreshing cancels the run; errors stop it without automatic paid retries. Completed proposals are saved with Auto provenance, but there is no automatic session resume. The original three-record replay stays unchanged. Auto is available in the live investigation; use **Return to live** first if replay is open.
 
 ## Transparent replay fallback
 

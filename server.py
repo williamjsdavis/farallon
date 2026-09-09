@@ -12,6 +12,7 @@ from io import BytesIO
 import json
 import os
 from pathlib import Path
+from secrets import randbits
 from time import perf_counter
 from uuid import uuid4
 
@@ -28,6 +29,7 @@ from geology.engine import render_map, render_volume
 from geology.history import HistoryError, history_to_program, parse_history, PARAM_SPECS
 from geology.scoring import MapScorer, mismatch_rgba, prepare_boundary_mask
 from geology.search import refine_history
+from geology.restarts import restart_history
 from geology.terrain import TerrainGrid
 
 ROOT = Path(__file__).resolve().parent
@@ -64,6 +66,9 @@ for entry in META["palette"]:
 PALETTE[0] = [0, 0, 0, 0]
 WARMUP_MS = 0.0
 ITERATION_LOCK = asyncio.Lock()
+AUTO_RUNS: dict[str, dict] = {}
+AUTO_PATIENCE = 4
+AUTO_RESTART_EVERY = 10
 
 
 def png_url(rgba: np.ndarray) -> str:
@@ -185,6 +190,12 @@ class IterationRequest(BaseModel):
     refine: bool = True
     scene_id: str | None = None
     baseline_id: str | None = None
+    auto_context: dict | None = None
+
+
+class AutoRequest(IterationRequest):
+    max_iterations: int = Field(default=20, strict=True, ge=1, le=100)
+    seed: int | None = Field(default=None, strict=True, ge=0, le=2**32 - 1)
 
 
 @app.get("/api/health")
@@ -302,6 +313,8 @@ async def propose(request: IterationRequest, current: dict) -> dict:
                         "min_z_km": float(HEIGHTS.min()), "max_z_km": float(HEIGHTS.max()),
                         "height_samples_5x5_north_up_km": HEIGHTS[np.ix_(np.linspace(0,len(YS)-1,5).astype(int), np.linspace(0,len(XS)-1,5).astype(int))].round(4).tolist()},
             "recent_attempts": [p for p in request.previous if p.get("scene_id") == SCENE_ID and p.get("baseline_id") == BASELINE_ID][-4:]}
+    if request.auto_context is not None:
+        info["auto"] = request.auto_context
     images = [
         ("Original map with legend; only the NW crop is scored:", file_url(ROOT / META["sourceImage"])),
         ("Clean observed NW target; transparent gaps are unobserved. Same bounds as prediction:", file_url(ROOT / "data/target.png")),
@@ -335,58 +348,231 @@ async def propose(request: IterationRequest, current: dict) -> dict:
     return proposal
 
 
-@app.post("/api/iterate")
-async def iterate(request: IterationRequest):
+def validate_iteration(request: IterationRequest) -> dict:
     check_scene(request.scene_id, request.baseline_id)
     try:
-        original = canonical(request.program)
+        return canonical(request.program)
     except HistoryError as exc:
         raise HTTPException(422, str(exc)) from None
+
+
+async def claim_iteration():
+    """Claim before returning a response; a second stream must never queue."""
     if ITERATION_LOCK.locked():
         raise HTTPException(409, "An iteration is already running.")
+    await ITERATION_LOCK.acquire()
+    released = False
+
+    def release():
+        nonlocal released
+        if not released:
+            released = True
+            ITERATION_LOCK.release()
+
+    return release
+
+
+class IterationStream(StreamingResponse):
+    """Close the generator and its lock even when a transport send fails."""
+
+    def __init__(self, content, cleanup):
+        self.cleanup = cleanup
+        super().__init__(content, media_type="application/x-ndjson",
+                         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    async def __call__(self, scope, receive, send):
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            try:
+                await self.body_iterator.aclose()
+            finally:
+                self.cleanup()
+
+
+def ndjson(kind: str, **values) -> str:
+    return json.dumps({"type": kind, **values}) + "\n"
+
+
+def proposal_error(exc: Exception) -> str:
+    return (str(exc) if isinstance(exc, (HistoryError, RuntimeError)) else
+            f"{type(exc).__name__}: proposal could not complete. Your current model is unchanged.")
+
+
+def save_record(record: dict):
+    run_dir = ROOT / "data/runs"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    (run_dir / f"{record['result']['id']}.json").write_text(json.dumps(record))
+
+
+async def attempt_events(request: IterationRequest, current: dict | None = None, *, search_seed: int | None = None):
+    """One proposal and measured candidate; callers choose how to retain it."""
+    started = perf_counter()
+    original = canonical(request.program)
+    yield {"type": "status", "stage": "observing", "message": "Reading the map and the current mismatch"}
+    if current is None:
+        current = await asyncio.to_thread(render_result, original, False)
+    llm_start = perf_counter()
+    proposal = await propose(request, current)
+    llm_ms = (perf_counter() - llm_start) * 1000
+    candidate = canonical(proposal["program"])
+    yield {"type": "proposal", **proposal, "model_ms": llm_ms}
+    yield {"type": "status", "stage": "testing", "message": "Generating the hypothesis and tuning its parameters"}
+    evaluations, search_ms = 1, 0.0
+    if request.refine:
+        candidate, _, evaluations, search_ms = await asyncio.to_thread(
+            refine_history, candidate, LABELS, XS, YS, MASK, budget=192, seconds=3.0,
+            seed=len(request.previous) if search_seed is None else search_seed,
+            allowed_fields=proposal["parameters_to_refine"][:10],
+            boundary_mask=BOUNDARY_MASK, terrain=HEIGHTS)
+    result = await asyncio.to_thread(render_result, candidate)
+    accepted = result["metrics"]["score"] > current["metrics"]["score"] + 1e-6
+    yield {"type": "result", "proposal": proposal, "result": result, "accepted": accepted,
+           "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
+           "before_program": history_to_program(original),
+           "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
+           "before": current["metrics"], "model_ms": llm_ms,
+           "search": {"evaluations": evaluations, "elapsed_ms": search_ms},
+           "elapsed_ms": (perf_counter() - started) * 1000, "model": MODEL,
+           "requested_service_tier": proposal.get("requested_service_tier", SERVICE_TIER),
+           "service_tier": proposal.get("service_tier")}
+
+
+@app.post("/api/iterate")
+async def iterate(request: IterationRequest):
+    validate_iteration(request)
+    release = await claim_iteration()
 
     async def events():
-        async with ITERATION_LOCK:
-            started = perf_counter()
-            def event(kind, **values):
-                return json.dumps({"type": kind, **values}) + "\n"
-            try:
-                yield event("status", stage="observing", message="Reading the map and the current mismatch")
-                current = await asyncio.to_thread(render_result, original, False)
-                llm_start = perf_counter()
-                proposal = await propose(request, current)
-                llm_ms = (perf_counter() - llm_start) * 1000
-                candidate = canonical(proposal["program"])
-                yield event("proposal", **proposal, model_ms=llm_ms)
-                yield event("status", stage="testing", message="Generating the hypothesis and tuning its parameters")
-                evaluations, search_ms = 1, 0.0
-                if request.refine:
-                    candidate, _, evaluations, search_ms = await asyncio.to_thread(
-                        refine_history, candidate, LABELS, XS, YS, MASK, budget=192, seconds=3.0,
-                        seed=len(request.previous), allowed_fields=proposal["parameters_to_refine"][:10],
-                        boundary_mask=BOUNDARY_MASK, terrain=HEIGHTS)
-                result = await asyncio.to_thread(render_result, candidate)
-                accepted = result["metrics"]["score"] > current["metrics"]["score"] + 1e-6
-                record = {"proposal": proposal, "result": result, "accepted": accepted,
-                          "scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
-                          "before_program": history_to_program(original),
-                          "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-                          "before": current["metrics"], "model_ms": llm_ms,
-                          "search": {"evaluations": evaluations, "elapsed_ms": search_ms},
-                          "elapsed_ms": (perf_counter() - started) * 1000, "model": MODEL,
-                          "requested_service_tier": SERVICE_TIER,
-                          "service_tier": proposal.get("service_tier")}
-                run_dir = ROOT / "data/runs"
-                run_dir.mkdir(exist_ok=True)
-                (run_dir / f"{result['id']}.json").write_text(json.dumps(record))
-                yield event("result", **record)
-            except asyncio.CancelledError:
-                raise
-            except Exception as exc:
-                # OpenAI error messages do not contain keys; avoid returning request bodies.
-                message = str(exc) if isinstance(exc, (HistoryError, RuntimeError)) else f"{type(exc).__name__}: proposal could not complete. Your current model is unchanged."
-                yield event("error", message=message)
-    return StreamingResponse(events(), media_type="application/x-ndjson", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+        try:
+            async for item in attempt_events(request):
+                if item["type"] == "result":
+                    save_record({key: value for key, value in item.items() if key != "type"})
+                yield json.dumps(item) + "\n"
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            yield ndjson("error", message=proposal_error(exc))
+        finally:
+            release()
+
+    return IterationStream(events(), release)
+
+
+@app.post("/api/auto/{run_id}/stop")
+async def stop_auto(run_id: str):
+    state = AUTO_RUNS.get(run_id)
+    if state is None:
+        raise HTTPException(404, "This auto run is not active.")
+    state["stop_requested"] = True
+    return {"run_id": run_id, "stop_requested": True}
+
+
+@app.post("/api/auto")
+async def auto(request: AutoRequest):
+    original = validate_iteration(request)
+    release = await claim_iteration()
+    run_id = uuid4().hex[:12]
+    seed = randbits(32) if request.seed is None else request.seed
+    state = {"stop_requested": False}
+    AUTO_RUNS[run_id] = state
+
+    def cleanup():
+        AUTO_RUNS.pop(run_id, None)
+        release()
+
+    try:
+        initial = await asyncio.to_thread(render_result, original)
+    except BaseException:
+        cleanup()
+        raise
+
+    async def events():
+        global_best = branch_best = initial
+        previous = list(request.previous)
+        completed, restarts, branch_iteration, stalls = 0, 0, 0, 0
+        branch = 1
+        restart_reason = None
+        reason = "limit"
+        try:
+            yield ndjson("started", run_id=run_id, max_iterations=request.max_iterations,
+                         seed=seed, patience=AUTO_PATIENCE, restart_every=AUTO_RESTART_EVERY)
+            while completed < request.max_iterations:
+                if state["stop_requested"]:
+                    reason = "stopped"
+                    break
+                if stalls >= AUTO_PATIENCE or branch_iteration >= AUTO_RESTART_EVERY:
+                    restart_reason = "stalled" if stalls >= AUTO_PATIENCE else "branch_limit"
+                    restarted, description = restart_history(
+                        canonical(global_best["program"]), canonical(BASELINE), META["bounds"],
+                        restart_index=restarts + 1, seed=seed)
+                    # The generator is trusted code, but the public scene constraints still apply.
+                    restarted = canonical(history_to_program(restarted))
+                    branch_best = await asyncio.to_thread(render_result, restarted)
+                    branch_best["restart"] = {"branch": branch + 1, "description": description}
+                    global_improved = branch_best["metrics"]["score"] > global_best["metrics"]["score"] + 1e-6
+                    if global_improved:
+                        global_best = branch_best
+                    restarts += 1
+                    branch += 1
+                    branch_iteration = stalls = 0
+                    previous = []
+                    yield ndjson("restart", branch=branch, reason=restart_reason,
+                                 description=description, result=branch_best, global_best=global_best,
+                                 global_improved=global_improved)
+                    if state["stop_requested"]:
+                        reason = "stopped"
+                        break
+                iteration = completed + 1
+                metadata = {"run_id": run_id, "iteration": iteration,
+                            "max_iterations": request.max_iterations, "seed": seed,
+                            "branch": branch, "branch_iteration": branch_iteration + 1}
+                context = {**metadata, "stall_count": stalls, "restart_reason": restart_reason,
+                           "global_best": {"id": global_best["id"], "metrics": global_best["metrics"]},
+                           "purpose": "Explore this branch; its starting score may be lower than the retained global best."}
+                attempt = IterationRequest(
+                    program=branch_best["program"], previous=previous[-12:], refine=request.refine,
+                    scene_id=SCENE_ID, baseline_id=BASELINE_ID, auto_context=context)
+                async for item in attempt_events(attempt, branch_best, search_seed=(seed + iteration) % 2**32):
+                    if item["type"] != "result":
+                        item["auto"] = metadata
+                        if item["type"] == "status":
+                            item["message"] = f"Iteration {iteration}/{request.max_iterations} · branch {branch}: {item['message']}"
+                        yield json.dumps(item) + "\n"
+                        continue
+                    candidate = item["result"]
+                    global_improved = candidate["metrics"]["score"] > global_best["metrics"]["score"] + 1e-6
+                    if item["accepted"]:
+                        branch_best = candidate
+                    if global_improved:
+                        global_best = candidate
+                    stalls = 0 if global_improved else stalls + 1
+                    completed += 1
+                    branch_iteration += 1
+                    record = {key: value for key, value in item.items() if key != "type"}
+                    record["auto"] = {**metadata, "global_improved": global_improved,
+                                      "global_best_id": global_best["id"]}
+                    save_record(record)
+                    previous.append({"scene_id": SCENE_ID, "baseline_id": BASELINE_ID,
+                                     "headline": item["proposal"]["headline"],
+                                     "observation": item["proposal"].get("observation", ""),
+                                     "expected_effect": item["proposal"].get("expected_effect", ""),
+                                     "program": candidate["program"], "accepted": item["accepted"],
+                                     "global_improved": global_improved, "metrics": candidate["metrics"]})
+                    yield ndjson("result", **record, global_best=global_best, branch_best=branch_best)
+            if state["stop_requested"]:
+                reason = "stopped"
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            reason = "error"
+            yield ndjson("error", message=proposal_error(exc), run_id=run_id)
+        finally:
+            cleanup()
+        yield ndjson("complete", reason=reason, run_id=run_id, completed_iterations=completed,
+                     restarts=restarts, best=global_best)
+
+    return IterationStream(events(), cleanup)
 
 
 @app.get("/api/runs")

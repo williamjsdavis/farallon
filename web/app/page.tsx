@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import {
   ArrowRight,
@@ -13,13 +13,16 @@ import {
   Play,
   RotateCcw,
   Sparkles,
+  Square,
   X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { GeologyBlock } from '@/components/geology-block';
+import { readEventStream } from '@/lib/event-stream';
 import type {
   ModelResult,
   Proposal,
@@ -46,6 +49,47 @@ type Bootstrap = {
   baseline_id?: string;
 };
 type SessionRun = RunRecord & { origin: 'live' | 'replay' };
+type InvestigationMode = 'live' | 'replay' | 'manual' | 'test' | 'restart';
+type LiveEvent =
+  | { type: 'status'; message: string }
+  | ({ type: 'proposal' } & Proposal)
+  | { type: 'error'; message: string }
+  | ({ type: 'result' } & RunRecord);
+type AutoEvent =
+  | Exclude<LiveEvent, { type: 'result' }>
+  | { type: 'started'; run_id: string; max_iterations: number }
+  | {
+      type: 'restart';
+      branch: number;
+      description: string;
+      result: ModelResult;
+      global_best: ModelResult;
+    }
+  | ({
+      type: 'result';
+      global_best: ModelResult;
+      branch_best: ModelResult;
+    } & RunRecord)
+  | {
+      type: 'complete';
+      reason: 'limit' | 'stopped' | 'error';
+      completed_iterations: number;
+      restarts: number;
+      best: ModelResult;
+    };
+type AutoProgress = {
+  state: 'running' | 'stopping' | 'limit' | 'stopped' | 'error';
+  completed: number;
+  limit: number;
+  branch: number;
+  restarts: number;
+};
+type AutoControl = {
+  controller: AbortController;
+  runId?: string;
+  stopRequested: boolean;
+  stopSent: boolean;
+};
 type Investigation = {
   best: ModelResult;
   selected: ModelResult;
@@ -53,7 +97,7 @@ type Investigation = {
   runs: SessionRun[];
   displayAttempt?: SessionRun;
   proposal?: Proposal;
-  mode: 'live' | 'replay' | 'manual' | 'test';
+  mode: InvestigationMode;
   counterfactual: string;
   ablationParent?: ModelResult;
 };
@@ -106,9 +150,16 @@ export default function Home() {
   const replayIndex = replaySession?.runs.length || 0;
   const replayLength = playlist?.runs.length || 0;
   const replayComplete = replayLength > 0 && replayIndex >= replayLength;
-  const [mode, setMode] = useState<'live' | 'replay' | 'manual' | 'test'>(
-    'live',
-  );
+  const [mode, setMode] = useState<InvestigationMode>('live');
+  const [autoLimit, setAutoLimit] = useState('20');
+  const [autoProgress, setAutoProgress] = useState<AutoProgress>();
+  const autoControl = useRef<AutoControl | null>(null);
+  const autoRunning =
+    autoProgress?.state === 'running' || autoProgress?.state === 'stopping';
+  const validAutoLimit =
+    /^\d+$/.test(autoLimit) &&
+    Number(autoLimit) >= 1 &&
+    Number(autoLimit) <= 100;
   const [counterfactual, setCounterfactual] = useState('');
   const [ablationParent, setAblationParent] = useState<ModelResult>();
   const isBusy = busy !== '';
@@ -129,7 +180,7 @@ export default function Home() {
     setProposal(run?.proposal);
     setDisplayAttempt(run);
     setMode(
-      run?.origin ||
+      (result.restart ? 'restart' : run?.origin) ||
         (result.id === baseline?.id
           ? replaySession
             ? 'replay'
@@ -162,6 +213,14 @@ export default function Home() {
     );
     return () => clearInterval(timer);
   }, [isBusy]);
+  useEffect(
+    () => () => {
+      const control = autoControl.current;
+      autoControl.current = null;
+      control?.controller.abort();
+    },
+    [],
+  );
 
   async function iterate() {
     if (!best || busy || replaySession) return;
@@ -248,6 +307,208 @@ export default function Home() {
         reader.releaseLock();
       }
       setBusy('');
+    }
+  }
+
+  async function sendAutoStop(control: AutoControl) {
+    if (!control.runId || control.stopSent) return;
+    control.stopSent = true;
+    try {
+      const response = await fetch(`/api/auto/${control.runId}/stop`, {
+        method: 'POST',
+        signal: control.controller.signal,
+      });
+      // The run can finish between the click and delivery of the stop request.
+      if (!response.ok && response.status !== 404)
+        throw new Error('The stop request failed.');
+    } catch {
+      if (autoControl.current === control) {
+        setError(
+          'The stop signal could not be delivered. Disconnected the auto run; completed results are retained.',
+        );
+        control.controller.abort();
+      }
+    }
+  }
+
+  function stopAuto() {
+    const control = autoControl.current;
+    if (!control) return;
+    control.stopRequested = true;
+    setAutoProgress((value) =>
+      value ? { ...value, state: 'stopping' } : value,
+    );
+    if (control.runId) void sendAutoStop(control);
+    else control.controller.abort();
+  }
+
+  async function startAuto() {
+    if (
+      !best ||
+      busy ||
+      replaySession ||
+      autoControl.current ||
+      !validAutoLimit
+    )
+      return;
+    const limit = Number(autoLimit);
+    const control: AutoControl = {
+      controller: new AbortController(),
+      stopRequested: false,
+      stopSent: false,
+    };
+    autoControl.current = control;
+    const knownRuns = [...runs];
+    let globalBest = best;
+    let complete = false;
+    let failureMessage = '';
+    const preserveInitialIdentity = (result: ModelResult) =>
+      result.program === best.program &&
+      result.scene_id === best.scene_id &&
+      result.baseline_id === best.baseline_id
+        ? best
+        : result;
+    const showBest = (result: ModelResult) => {
+      const run = knownRuns.find((item) => item.result.id === result.id);
+      setBest(result);
+      show(result);
+      setProposal(run?.proposal);
+      setDisplayAttempt(run);
+      setMode(
+        result.restart
+          ? 'restart'
+          : run?.origin || (result.id === baseline?.id ? 'live' : 'manual'),
+      );
+    };
+    setError('');
+    setProposal(undefined);
+    setDisplayAttempt(undefined);
+    setMode('live');
+    show(best);
+    setAutoProgress({
+      state: 'running',
+      completed: 0,
+      limit,
+      branch: 1,
+      restarts: 0,
+    });
+    beginWork('Starting the automatic investigation');
+    try {
+      const response = await fetch('/api/auto', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: control.controller.signal,
+        body: JSON.stringify({
+          program: best.program,
+          scene_id: best.scene_id,
+          baseline_id: best.baseline_id,
+          max_iterations: limit,
+          previous: runs.slice(-4).map((r) => ({
+            headline: r.proposal.headline,
+            program: r.result.program,
+            metrics: r.result.metrics,
+            accepted: r.accepted,
+            scene_id: r.scene_id,
+            baseline_id: r.baseline_id,
+          })),
+          refine: true,
+        }),
+      });
+      await readEventStream<AutoEvent>(response, (event) => {
+        if (autoControl.current !== control) return;
+        if (event.type === 'started') {
+          control.runId = event.run_id;
+          if (control.stopRequested) void sendAutoStop(control);
+        }
+        if (event.type === 'status') setBusy(event.message);
+        if (event.type === 'proposal') {
+          setMode('live');
+          setProposal(event);
+          setDisplayAttempt(undefined);
+          setProgram(event.program);
+        }
+        if (event.type === 'restart') {
+          globalBest = preserveInitialIdentity(event.global_best);
+          setBest(globalBest);
+          show(event.result);
+          setMode('restart');
+          setProposal(undefined);
+          setDisplayAttempt(undefined);
+          setAutoProgress((value) =>
+            value
+              ? {
+                  ...value,
+                  branch: event.branch,
+                  restarts: event.branch - 1,
+                }
+              : value,
+          );
+        }
+        if (event.type === 'result') {
+          if (!event.auto)
+            throw new Error('The server returned an incomplete auto result.');
+          // Keep only one volume per recorded candidate in the session history.
+          const { global_best, branch_best, ...stored } = event;
+          const record: SessionRun = { ...stored, origin: 'live' };
+          knownRuns.push(record);
+          setRuns((previous) => [...previous, record]);
+          globalBest = preserveInitialIdentity(global_best);
+          setBest(globalBest);
+          show(preserveInitialIdentity(branch_best));
+          setMode('live');
+          setProposal(record.proposal);
+          setDisplayAttempt(record);
+          setAutoProgress((value) =>
+            value
+              ? {
+                  ...value,
+                  completed: event.auto!.iteration,
+                  branch: event.auto!.branch,
+                  restarts: event.auto!.branch - 1,
+                }
+              : value,
+          );
+        }
+        if (event.type === 'error') {
+          failureMessage = event.message;
+          setError(event.message);
+        }
+        if (event.type === 'complete') {
+          complete = true;
+          globalBest = preserveInitialIdentity(event.best);
+          showBest(globalBest);
+          setAutoProgress((value) =>
+            value
+              ? {
+                  ...value,
+                  state: event.reason,
+                  completed: event.completed_iterations,
+                  restarts: event.restarts,
+                }
+              : value,
+          );
+        }
+      });
+      if (!complete)
+        throw new Error(
+          failureMessage ||
+            'The auto connection ended early. The best completed model is retained.',
+        );
+    } catch (e) {
+      if (autoControl.current === control) {
+        showBest(globalBest);
+        const stopped = control.controller.signal.aborted;
+        if (!stopped)
+          setError(e instanceof Error ? e.message : 'Auto mode failed.');
+        setAutoProgress((value) =>
+          value ? { ...value, state: stopped ? 'stopped' : 'error' } : value,
+        );
+      }
+    } finally {
+      if (autoControl.current === control) {
+        autoControl.current = null;
+        setBusy('');
+      }
     }
   }
 
@@ -411,6 +672,7 @@ export default function Home() {
       session ? { ...session, runs: [] } : undefined,
     );
     setError('');
+    setAutoProgress(undefined);
   }
   const last = runs.at(-1);
   const activeRun = displayAttempt;
@@ -489,9 +751,59 @@ export default function Home() {
                 ? 'MANUAL SIMULATION'
                 : mode === 'test'
                   ? 'FEATURE TEST'
-                  : 'LIVE INFERENCE'}
+                  : mode === 'restart'
+                    ? 'RESTART SEED'
+                    : 'LIVE INFERENCE'}
           </small>
         </div>
+      </section>
+      <section className="auto-panel" aria-label="Automatic investigation">
+        <div className="auto-controls">
+          <Button
+            variant={autoRunning ? 'outline' : 'default'}
+            onClick={autoRunning ? stopAuto : startAuto}
+            disabled={
+              autoRunning
+                ? autoProgress?.state === 'stopping'
+                : !!busy ||
+                  !best ||
+                  !keyAvailable ||
+                  !!replaySession ||
+                  !validAutoLimit
+            }
+          >
+            {autoRunning ? <Square size={14} /> : <Play size={14} />}
+            {autoProgress?.state === 'stopping'
+              ? 'Finishing iteration…'
+              : autoRunning
+                ? 'Stop auto'
+                : 'Start auto'}
+          </Button>
+          <label htmlFor="auto-limit">Iterations</label>
+          <Input
+            id="auto-limit"
+            type="number"
+            min={1}
+            max={100}
+            step={1}
+            value={autoLimit}
+            disabled={!!busy || !!replaySession}
+            aria-invalid={autoLimit !== '' && !validAutoLimit}
+            onChange={(event) => setAutoLimit(event.target.value)}
+          />
+          <span>1–100</span>
+        </div>
+        <output className="auto-status">
+          {autoProgress && !replaySession
+            ? `${autoProgress.state === 'running' ? 'Running' : autoProgress.state === 'stopping' ? 'Stopping after this iteration' : autoProgress.state === 'limit' ? 'Limit reached' : autoProgress.state === 'error' ? 'Stopped on error' : 'Stopped'} · ${autoProgress.completed}/${autoProgress.limit} complete · restart ${autoProgress.restarts}${best ? ` · best overall ${percent(best.metrics.miou)} overlap` : ''}`
+            : replaySession
+              ? 'Return to live to start an automatic investigation.'
+              : 'Restarts after 4 stalled attempts or 10 iterations per branch. Keeps the best overall.'}
+        </output>
+        <span className="auto-note">
+          Each iteration makes one API request. Stop finishes the current
+          iteration.
+        </span>
       </section>
       {error && (
         <div className="error-banner" role="alert">
@@ -596,7 +908,9 @@ export default function Home() {
                           ? 'Starting hypothesis'
                           : selected.id === best?.id
                             ? 'Best hypothesis'
-                            : 'Candidate hypothesis')}
+                            : autoRunning
+                              ? `Current branch ${autoProgress?.branch}`
+                              : 'Candidate hypothesis')}
                     </span>
                   </div>
                   <div
@@ -845,7 +1159,9 @@ export default function Home() {
                             ? 'YOUR EXECUTABLE HISTORY'
                             : mode === 'test'
                               ? 'CONTROLLED FEATURE TEST'
-                              : 'THE STARTING QUESTION'}
+                              : mode === 'restart'
+                                ? 'RANDOMIZED RESTART'
+                                : 'THE STARTING QUESTION'}
                     </p>
                     <h3>
                       {proposal?.headline ||
@@ -853,7 +1169,9 @@ export default function Home() {
                           ? 'Your program, measured against the map'
                           : mode === 'test'
                             ? counterfactual
-                            : 'What deformation is missing from these flat layers?')}
+                            : mode === 'restart'
+                              ? 'Explore a different starting history'
+                              : 'What deformation is missing from these flat layers?')}
                     </h3>
                     <p>
                       {proposal?.observation ||
@@ -861,7 +1179,10 @@ export default function Home() {
                           ? 'This model was generated from the history editor. The displayed measurements compare its surface against the same fixed geological observations.'
                           : mode === 'test'
                             ? 'A single feature was changed from the original model. Compare the outcrop pattern and overlap score to see whether that feature helps explain the map.'
-                            : 'We begin with seven horizontal sedimentary packages and no fold. GPT-6 sees the mapped outcrops, real topography, and the mismatch, then writes the missing geological events.')}
+                            : mode === 'restart'
+                              ? selected.restart?.description ||
+                                'A different starting history opens a new search branch. The best model from earlier branches is retained.'
+                              : 'We begin with seven horizontal sedimentary packages and no fold. GPT-6 sees the mapped outcrops, real topography, and the mismatch, then writes the missing geological events.')}
                     </p>
                     <div className="testable-effect">
                       <ArrowRight size={15} />
@@ -872,7 +1193,9 @@ export default function Home() {
                             ? 'Removing an explanatory feature should make the fit worse. Each feature test begins from the same original model.'
                             : mode === 'manual'
                               ? 'Use the measured fit to decide whether this executable history explains the outcrops.'
-                              : 'Find the missing geometry that makes the colored bands close around the northwest nose.')}
+                              : mode === 'restart'
+                                ? 'A fresh starting point may lead to a better explanation. This seed was generated locally; GPT-6 will test new hypotheses from it.'
+                                : 'Find the missing geometry that makes the colored bands close around the northwest nose.')}
                       </span>
                     </div>
                     {activeRun && !busy && (
@@ -884,13 +1207,19 @@ export default function Home() {
                         ) : (
                           <X size={14} />
                         )}{' '}
-                        {activeRun.accepted
-                          ? mode === 'replay'
-                            ? 'Accepted in this recorded investigation'
-                            : 'Improved the combined fit — hypothesis accepted'
-                          : mode === 'replay'
-                            ? 'Rejected in this recorded investigation'
-                            : 'Did not improve the combined fit — previous best retained'}
+                        {activeRun.auto
+                          ? activeRun.auto.global_improved
+                            ? 'New best across all restarts'
+                            : activeRun.accepted
+                              ? 'Improved this branch; overall best retained'
+                              : 'Did not improve this branch; branch best retained'
+                          : activeRun.accepted
+                            ? mode === 'replay'
+                              ? 'Accepted in this recorded investigation'
+                              : 'Improved the combined fit — hypothesis accepted'
+                            : mode === 'replay'
+                              ? 'Rejected in this recorded investigation'
+                              : 'Did not improve the combined fit — previous best retained'}
                         <span>
                           {activeRun.search.evaluations} numerical trials
                         </span>
@@ -944,7 +1273,9 @@ export default function Home() {
                       ? 'MANUAL'
                       : mode === 'test'
                         ? 'FEATURE TEST'
-                        : 'LIVE'}
+                        : mode === 'restart'
+                          ? 'RESTART'
+                          : 'LIVE'}
                 </span>
               </div>
               <div className="run-list">
@@ -982,8 +1313,12 @@ export default function Home() {
                       <strong>{run.proposal.headline}</strong>
                       <small>
                         {run.origin === 'replay' ? 'Recorded · ' : ''}
-                        {run.accepted ? 'Accepted' : 'Rejected'} ·{' '}
-                        {(run.model_ms / 1000).toFixed(1)} s proposal
+                        {run.auto
+                          ? `Auto ${run.auto.iteration} · branch ${run.auto.branch} · ${run.auto.global_improved ? 'Overall best' : run.accepted ? 'Branch improved' : 'Rejected'}`
+                          : run.accepted
+                            ? 'Accepted'
+                            : 'Rejected'}{' '}
+                        · {(run.model_ms / 1000).toFixed(1)} s proposal
                       </small>
                     </div>
                     <span className={run.accepted ? 'delta' : ''}>

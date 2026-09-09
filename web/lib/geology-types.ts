@@ -44,6 +44,7 @@ export type ModelResult = {
   observed_map_image: string;
   error_image: string;
   timings: { generation_ms: number; total_ms: number };
+  restart?: { branch: number; description: string };
 };
 export type Proposal = {
   headline: string;
@@ -63,4 +64,13 @@ export type RunRecord = {
   elapsed_ms: number;
   search: { evaluations: number; elapsed_ms: number };
   model: string;
+  auto?: {
+    run_id: string;
+    iteration: number;
+    max_iterations: number;
+    branch: number;
+    branch_iteration: number;
+    global_improved: boolean;
+    global_best_id: string;
+  };
 };
