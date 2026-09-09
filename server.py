@@ -5,6 +5,7 @@ import asyncio
 import base64
 from contextlib import asynccontextmanager
 from copy import deepcopy
+from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from functools import lru_cache
 from hashlib import sha256
@@ -14,6 +15,7 @@ import os
 from pathlib import Path
 from secrets import randbits
 from time import perf_counter
+from typing import Literal
 from uuid import uuid4
 
 import numpy as np
@@ -23,7 +25,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from openai import AsyncOpenAI
 from PIL import Image
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from geology.engine import render_map, render_volume
 from geology.history import HistoryError, history_to_program, parse_history, PARAM_SPECS
@@ -39,6 +41,27 @@ load_dotenv(ROOT / ".env")
 MODEL = os.getenv("OPENAI_MODEL", "gpt-6-astra")
 EFFORT = os.getenv("OPENAI_REASONING_EFFORT", "low")
 SERVICE_TIER = os.getenv("OPENAI_SERVICE_TIER", "auto")
+MODEL_PRESETS = (
+    {"id": "luna", "model": "gpt-5.6-luna", "label": "GPT-5.6 Luna",
+     "description": "Speed-focused, without a reasoning step.", "reasoning_effort": "none", "service_tier": "fast"},
+    {"id": "terra", "model": "gpt-5.6-terra", "label": "GPT-5.6 Terra",
+     "description": "Balanced model with low reasoning.", "reasoning_effort": "low", "service_tier": "fast"},
+    {"id": "sol", "model": "gpt-5.6-sol", "label": "GPT-5.6 Sol",
+     "description": "Flagship model with low reasoning.", "reasoning_effort": "low", "service_tier": "fast"},
+    {"id": "astra", "model": "gpt-6-astra", "label": "GPT-6 Astra",
+     "description": "Most capable model with low reasoning.", "reasoning_effort": "low", "service_tier": "fast"},
+)
+MODEL_PRESETS_BY_ID = {preset["id"]: preset for preset in MODEL_PRESETS}
+
+
+@dataclass(frozen=True)
+class ModelSettings:
+    model: str
+    model_preset: str | None
+    reasoning_effort: str
+    requested_service_tier: str
+
+
 BASELINE = """# Start before deformation: seven horizontal sedimentary packages.
 strata(levels=[-1.2, -1.05, -0.92, -0.78, -0.5, -0.2], units=[1, 2, 3, 4, 5, 6, 7])
 erode(level=0)
@@ -204,11 +227,25 @@ class IterationRequest(BaseModel):
     scene_id: str | None = None
     baseline_id: str | None = None
     auto_context: dict | None = None
+    model_preset: Literal["luna", "terra", "sol", "astra"] | None = None
+    _model_settings: ModelSettings | None = PrivateAttr(default=None)
 
 
 class AutoRequest(IterationRequest):
     max_iterations: int = Field(default=20, strict=True, ge=1, le=100)
     seed: int | None = Field(default=None, strict=True, ge=0, le=2**32 - 1)
+
+
+def resolve_model(request: IterationRequest) -> ModelSettings:
+    """Snapshot settings once, including when an auto run starts from env defaults."""
+    if request._model_settings is None:
+        if request.model_preset is None:
+            request._model_settings = ModelSettings(MODEL, None, EFFORT, SERVICE_TIER)
+        else:
+            preset = MODEL_PRESETS_BY_ID[request.model_preset]
+            request._model_settings = ModelSettings(
+                preset["model"], preset["id"], preset["reasoning_effort"], preset["service_tier"])
+    return request._model_settings
 
 
 @app.get("/api/health")
@@ -223,6 +260,7 @@ def health():
 @app.get("/api/bootstrap")
 async def bootstrap():
     return {"target": META, "model": MODEL, "api_key_available": bool(os.getenv("OPENAI_API_KEY")),
+            "model_presets": deepcopy(list(MODEL_PRESETS)), "default_model_preset": "astra",
             "requested_service_tier": SERVICE_TIER,
             "scene_id": SCENE_ID, "baseline_id": BASELINE_ID, "terrain": TERRAIN_META,
             "baseline_name": "Undeformed sedimentary layers",
@@ -326,6 +364,7 @@ Numerical refinements and actual measurements, not your own assessment, decide a
 async def propose(request: IterationRequest, current: dict) -> dict:
     if not os.getenv("OPENAI_API_KEY"):
         raise RuntimeError("Set OPENAI_API_KEY in the local .env file, then restart the server.")
+    settings = resolve_model(request)
     reference_info = {
         "bounds_km": META["bounds"], "image_axes": "top=north/right=east",
         "legend": [{k: e[k] for k in ("id", "name", "color", "age")} for e in META["palette"]],
@@ -368,9 +407,9 @@ async def propose(request: IterationRequest, current: dict) -> dict:
         "additionalProperties": False}
     async with AsyncOpenAI(timeout=75.0, max_retries=0) as client:
         response = await client.responses.create(
-            model=MODEL, reasoning={"effort": EFFORT}, max_output_tokens=3500,
-            service_tier=SERVICE_TIER,
-            prompt_cache_key=f"farallon-observations-v1:{SCENE_ID}",
+            model=settings.model, reasoning={"effort": settings.reasoning_effort}, max_output_tokens=3500,
+            service_tier=settings.requested_service_tier,
+            prompt_cache_key=f"farallon-v2:{SCENE_ID}:{settings.model}:{settings.reasoning_effort}",
             prompt_cache_options={"mode": "explicit", "ttl": "30m"},
             instructions=SYSTEM_PROMPT,
             input=[{"role": "user", "content": reference_content},
@@ -381,13 +420,14 @@ async def propose(request: IterationRequest, current: dict) -> dict:
     proposal = json.loads(response.output_text)
     proposal["usage"] = response.usage.model_dump() if response.usage else None
     proposal["response_id"] = response.id
-    proposal["requested_service_tier"] = SERVICE_TIER
+    proposal.update(asdict(settings))
     proposal["service_tier"] = response.service_tier
     return proposal
 
 
 def validate_iteration(request: IterationRequest) -> dict:
     check_scene(request.scene_id, request.baseline_id)
+    resolve_model(request)
     try:
         return canonical(request.program)
     except HistoryError as exc:
@@ -446,6 +486,7 @@ def save_record(record: dict):
 async def attempt_events(request: IterationRequest, current: dict | None = None, *, search_seed: int | None = None):
     """One proposal and measured candidate; callers choose how to retain it."""
     started = perf_counter()
+    settings = resolve_model(request)
     original = canonical(request.program)
     yield {"type": "status", "stage": "observing", "message": "Reading the map and the current mismatch"}
     if current is None:
@@ -471,8 +512,7 @@ async def attempt_events(request: IterationRequest, current: dict | None = None,
            "recorded_at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
            "before": current["metrics"], "model_ms": llm_ms,
            "search": {"evaluations": evaluations, "elapsed_ms": search_ms},
-           "elapsed_ms": (perf_counter() - started) * 1000, "model": MODEL,
-           "requested_service_tier": proposal.get("requested_service_tier", SERVICE_TIER),
+           "elapsed_ms": (perf_counter() - started) * 1000, **asdict(settings),
            "service_tier": proposal.get("service_tier")}
 
 
@@ -509,6 +549,7 @@ async def stop_auto(run_id: str):
 @app.post("/api/auto")
 async def auto(request: AutoRequest):
     original = validate_iteration(request)
+    settings = resolve_model(request)
     release = await claim_iteration()
     run_id = uuid4().hex[:12]
     seed = randbits(32) if request.seed is None else request.seed
@@ -534,7 +575,8 @@ async def auto(request: AutoRequest):
         reason = "limit"
         try:
             yield ndjson("started", run_id=run_id, max_iterations=request.max_iterations,
-                         seed=seed, patience=AUTO_PATIENCE, restart_every=AUTO_RESTART_EVERY)
+                         seed=seed, patience=AUTO_PATIENCE, restart_every=AUTO_RESTART_EVERY,
+                         **asdict(settings))
             while completed < request.max_iterations:
                 if state["stop_requested"]:
                     reason = "stopped"
@@ -570,7 +612,9 @@ async def auto(request: AutoRequest):
                            "purpose": "Explore this branch; its starting score may be lower than the retained global best."}
                 attempt = IterationRequest(
                     program=branch_best["program"], previous=previous[-12:], refine=request.refine,
-                    scene_id=SCENE_ID, baseline_id=BASELINE_ID, auto_context=context)
+                    scene_id=SCENE_ID, baseline_id=BASELINE_ID, auto_context=context,
+                    model_preset=request.model_preset)
+                attempt._model_settings = settings
                 async for item in attempt_events(attempt, branch_best, search_seed=(seed + iteration) % 2**32):
                     if item["type"] != "result":
                         item["auto"] = metadata

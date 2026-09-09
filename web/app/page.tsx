@@ -18,6 +18,10 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import {
+  NativeSelect,
+  NativeSelectOption,
+} from '@/components/ui/native-select';
 import { Slider } from '@/components/ui/slider';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
@@ -25,6 +29,7 @@ import { GeologyBlock } from '@/components/geology-block';
 import { readEventStream } from '@/lib/event-stream';
 import type {
   ModelResult,
+  ModelPreset,
   Proposal,
   RunRecord,
   Target,
@@ -52,6 +57,8 @@ type Bootstrap = {
   baseline: ModelResult;
   api_key_available: boolean;
   model: string;
+  model_presets: ModelPreset[];
+  default_model_preset: ModelPreset['id'];
   requested_service_tier?: string;
   terrain?: Terrain;
   scene_id?: string;
@@ -151,6 +158,11 @@ export default function Home() {
   const [error, setError] = useState('');
   const [keyAvailable, setKeyAvailable] = useState(false);
   const [model, setModel] = useState('gpt-6-astra');
+  const [modelPresets, setModelPresets] = useState<ModelPreset[]>([]);
+  const [modelPreset, setModelPreset] = useState<ModelPreset['id']>('astra');
+  const chosenPreset = modelPresets.find((preset) => preset.id === modelPreset);
+  const modelName = (id: string) =>
+    modelPresets.find((preset) => preset.model === id)?.label || id;
   const [requestedTier, setRequestedTier] = useState<string>();
   const [cut, setCut] = useState(0.12);
   const [mapTab, setMapTab] = useState('units');
@@ -208,6 +220,8 @@ export default function Home() {
         show(data.baseline);
         setKeyAvailable(data.api_key_available);
         setModel(data.model);
+        setModelPresets(data.model_presets || []);
+        setModelPreset(data.default_model_preset || 'astra');
         setRequestedTier(data.requested_service_tier);
       })
       .catch((e) => setError(e.message));
@@ -234,7 +248,7 @@ export default function Home() {
   );
 
   async function iterate() {
-    if (!best || busy || replaySession) return;
+    if (!best || busy || replaySession || !chosenPreset) return;
     setError('');
     setProposal(undefined);
     setDisplayAttempt(undefined);
@@ -248,6 +262,7 @@ export default function Home() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          model_preset: modelPreset,
           program: best.program,
           scene_id: best.scene_id,
           baseline_id: best.baseline_id,
@@ -359,6 +374,7 @@ export default function Home() {
       busy ||
       replaySession ||
       autoControl.current ||
+      !chosenPreset ||
       !validAutoLimit
     )
       return;
@@ -410,6 +426,7 @@ export default function Home() {
         headers: { 'Content-Type': 'application/json' },
         signal: control.controller.signal,
         body: JSON.stringify({
+          model_preset: modelPreset,
           program: best.program,
           scene_id: best.scene_id,
           baseline_id: best.baseline_id,
@@ -602,7 +619,7 @@ export default function Home() {
       return;
     const next = playlist.runs[replayIndex];
     if (!next) return;
-    beginWork('Loading a recorded GPT-6 proposal');
+    beginWork('Loading a recorded proposal');
     setError('');
     try {
       if (
@@ -724,7 +741,11 @@ export default function Home() {
           </Button>
           <Button
             className="run-button"
-            disabled={!!busy || !best || (!replaySession && !keyAvailable)}
+            disabled={
+              !!busy ||
+              !best ||
+              (!replaySession && (!keyAvailable || !chosenPreset))
+            }
             onClick={replaySession ? returnToLive : iterate}
           >
             {busy ? (
@@ -738,7 +759,7 @@ export default function Home() {
               ? 'Testing hypothesis'
               : replaySession
                 ? 'Return to live'
-                : 'Let GPT-6 investigate'}
+                : 'Test next hypothesis'}
             {!busy && <ArrowRight size={16} />}
           </Button>
         </div>
@@ -754,7 +775,14 @@ export default function Home() {
         </div>
         <div className="model-label">
           <span className={keyAvailable ? 'live-dot' : 'offline-dot'} />
-          {model}
+          {mode === 'replay' && !displayAttempt && !proposal
+            ? 'Recorded rehearsal'
+            : modelName(
+                displayAttempt?.model ||
+                  proposal?.model ||
+                  chosenPreset?.model ||
+                  model,
+              )}
           <small>
             {mode === 'replay'
               ? 'RECORDED RUN'
@@ -764,13 +792,51 @@ export default function Home() {
                   ? 'FEATURE TEST'
                   : mode === 'restart'
                     ? 'RESTART SEED'
-                    : requestedTier === 'fast' || requestedTier === 'priority'
-                      ? 'LIVE · FAST REQUESTED'
-                      : 'LIVE INFERENCE'}
+                    : displayAttempt && !busy
+                      ? processingTier(
+                          displayAttempt.service_tier,
+                        ).toUpperCase()
+                      : (chosenPreset?.service_tier || requestedTier) ===
+                            'fast' ||
+                          (chosenPreset?.service_tier || requestedTier) ===
+                            'priority'
+                        ? 'LIVE · FAST REQUESTED'
+                        : 'LIVE INFERENCE'}
           </small>
         </div>
       </section>
       <section className="auto-panel" aria-label="Automatic investigation">
+        <div className="model-controls">
+          <label htmlFor="model-preset">Model</label>
+          <NativeSelect
+            id="model-preset"
+            className="model-select"
+            value={modelPreset}
+            disabled={
+              !!busy || !!autoRunning || !!replaySession || !modelPresets.length
+            }
+            aria-describedby="model-preset-note"
+            onChange={(event) => {
+              const preset = modelPresets.find(
+                (item) => item.id === event.target.value,
+              );
+              if (preset) setModelPreset(preset.id);
+            }}
+          >
+            {modelPresets.map((preset) => (
+              <NativeSelectOption key={preset.id} value={preset.id}>
+                {preset.label} ·{' '}
+                {preset.id === 'luna'
+                  ? 'Speed'
+                  : preset.id === 'terra'
+                    ? 'Balanced'
+                    : preset.id === 'sol'
+                      ? 'Strong'
+                      : 'Strongest'}
+              </NativeSelectOption>
+            ))}
+          </NativeSelect>
+        </div>
         <div className="auto-controls">
           <Button
             variant={autoRunning ? 'outline' : 'default'}
@@ -781,6 +847,7 @@ export default function Home() {
                 : !!busy ||
                   !best ||
                   !keyAvailable ||
+                  !chosenPreset ||
                   !!replaySession ||
                   !validAutoLimit
             }
@@ -806,6 +873,11 @@ export default function Home() {
           />
           <span>1–100</span>
         </div>
+        <span id="model-preset-note" className="model-preset-note">
+          {chosenPreset
+            ? `Fast mode · ${chosenPreset.reasoning_effort === 'none' ? 'no reasoning tokens' : 'low reasoning'} · applies to single and auto runs`
+            : 'Loading model options…'}
+        </span>
         <output className="auto-status">
           {autoProgress && !replaySession
             ? `${autoProgress.state === 'running' ? 'Running' : autoProgress.state === 'stopping' ? 'Stopping after this iteration' : autoProgress.state === 'limit' ? 'Limit reached' : autoProgress.state === 'error' ? 'Stopped on error' : 'Stopped'} · ${autoProgress.completed}/${autoProgress.limit} complete · restart ${autoProgress.restarts}${best ? ` · best overall ${percent(best.metrics.miou)} overlap` : ''}`
@@ -941,7 +1013,8 @@ export default function Home() {
                       src={
                         mapTab === 'error'
                           ? selected.error_image
-                          : selected.cartographic_map_image || selected.map_image
+                          : selected.cartographic_map_image ||
+                            selected.map_image
                       }
                       alt={
                         mapTab === 'error'
@@ -976,11 +1049,18 @@ export default function Home() {
               </div>
               {mapTab !== 'error' && (
                 <div className="fold-key">
-                  <span>Dashed model axes · anticline arrows out · syncline arrows in</span>
                   <span>
-                    {selected.fold_axes?.some((axis) => axis.status === 'unavailable')
+                    Dashed model axes · anticline arrows out · syncline arrows
+                    in
+                  </span>
+                  <span>
+                    {selected.fold_axes?.some(
+                      (axis) => axis.status === 'unavailable',
+                    )
                       ? 'Some axes omitted after later deformation.'
-                      : selected.fold_axes?.some((axis) => axis.status === 'visible')
+                      : selected.fold_axes?.some(
+                            (axis) => axis.status === 'visible',
+                          )
                         ? 'Axes belong to the proposed fold events.'
                         : 'No active fold axis in this view.'}
                   </span>
@@ -1053,7 +1133,8 @@ export default function Home() {
                   disabled={
                     !!busy ||
                     !(ablationParent || selected).history.events.some(
-                      (event) => event.type === 'anticline' || event.type === 'syncline',
+                      (event) =>
+                        event.type === 'anticline' || event.type === 'syncline',
                     )
                   }
                   onClick={() => ablate('plunge')}
@@ -1066,7 +1147,8 @@ export default function Home() {
                   disabled={
                     !!busy ||
                     !(ablationParent || selected).history.events.some(
-                      (event) => event.type === 'anticline' || event.type === 'syncline',
+                      (event) =>
+                        event.type === 'anticline' || event.type === 'syncline',
                     )
                   }
                   onClick={() => ablate('asymmetry')}
@@ -1146,8 +1228,12 @@ export default function Home() {
                   : 'Ready for the first investigation'}
               </span>
               {last && (
-                <span className="api-timing" title={`Requested: ${last.requested_service_tier || 'not recorded'}; actual API response tier: ${last.service_tier || 'not recorded'}. API time includes image input, reasoning and output. Fast mode has no fixed end-to-end speedup.`}>
-                  {processingTier(last.service_tier)} · {(last.search.elapsed_ms / 1000).toFixed(2)} s tuning
+                <span
+                  className="api-timing"
+                  title={`Requested: ${last.requested_service_tier || 'not recorded'}; actual API response tier: ${last.service_tier || 'not recorded'}. API time includes image input, reasoning and output. Fast mode has no fixed end-to-end speedup.`}
+                >
+                  {processingTier(last.service_tier)} ·{' '}
+                  {(last.search.elapsed_ms / 1000).toFixed(2)} s tuning
                 </span>
               )}
             </div>
@@ -1186,9 +1272,9 @@ export default function Home() {
                   <div>
                     <p className="eyebrow">
                       {mode === 'replay' && proposal
-                        ? 'RECORDED GPT-6 PROPOSAL'
+                        ? `RECORDED ${modelName(activeRun?.model || proposal?.model || model).toUpperCase()} PROPOSAL`
                         : proposal
-                          ? 'GPT-6 VISUAL HYPOTHESIS'
+                          ? `${modelName(activeRun?.model || proposal.model || chosenPreset?.model || model).toUpperCase()} VISUAL HYPOTHESIS`
                           : mode === 'manual'
                             ? 'YOUR EXECUTABLE HISTORY'
                             : mode === 'test'
@@ -1216,7 +1302,7 @@ export default function Home() {
                             : mode === 'restart'
                               ? selected.restart?.description ||
                                 'A different starting history opens a new search branch. The best model from earlier branches is retained.'
-                              : 'We begin with seven horizontal sedimentary packages and no fold. GPT-6 sees the mapped outcrops, real topography, and the mismatch, then writes the missing geological events.')}
+                              : 'We begin with seven horizontal sedimentary packages and no fold. The selected model sees the mapped outcrops, real topography, and the mismatch, then writes the missing geological events.')}
                     </p>
                     <div className="testable-effect">
                       <ArrowRight size={15} />
@@ -1228,7 +1314,7 @@ export default function Home() {
                             : mode === 'manual'
                               ? 'Use the measured fit to decide whether this executable history explains the outcrops.'
                               : mode === 'restart'
-                                ? 'A fresh starting point may lead to a better explanation. This seed was generated locally; GPT-6 will test new hypotheses from it.'
+                                ? 'A fresh starting point may lead to a better explanation. This seed was generated locally; the selected model will test new hypotheses from it.'
                                 : 'Find the missing geometry that makes the colored bands close around the northwest nose.')}
                       </span>
                     </div>
@@ -1352,8 +1438,10 @@ export default function Home() {
                           : run.accepted
                             ? 'Accepted'
                             : 'Rejected'}{' '}
-                        · {(run.model_ms / 1000).toFixed(1)} s proposal
-                        {' · '}{processingTier(run.service_tier)}
+                        · {modelName(run.model)} ·{' '}
+                        {(run.model_ms / 1000).toFixed(1)} s proposal
+                        {' · '}
+                        {processingTier(run.service_tier)}
                       </small>
                     </div>
                     <span className={run.accepted ? 'delta' : ''}>

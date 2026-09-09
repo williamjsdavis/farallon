@@ -775,6 +775,28 @@ footer a:hover {
   gap: 10px;
   font-size: 14px;
 }
+.model-controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  min-width: 0;
+  max-width: 100%;
+}
+.model-select {
+  flex: 1;
+  width: 260px;
+  min-width: 0;
+}
+.model-select select {
+  background: #1c303e;
+  color: #e4edf2;
+}
+.model-preset-note {
+  color: #9bb0bf;
+  font-size: 12px;
+  flex: 1 1 250px;
+}
 .auto-controls input {
   width: 76px;
   font-family: var(--font-mono);

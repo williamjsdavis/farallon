@@ -22,9 +22,20 @@ uv sync
 npm --prefix web ci
 ```
 
-The backend reads `OPENAI_API_KEY` from the environment or a root `.env` file. See `.env.example`; do not place a key in the frontend. Defaults: `OPENAI_MODEL=gpt-6-astra`, `OPENAI_REASONING_EFFORT=low`. Restart after changing environment settings. Without a key, manual simulation and saved replay still work. **Let GPT-6 investigate** makes one paid proposal call. **Start auto** runs up to the chosen number of iterations, with one paid proposal per iteration. No model calls run automatically on page load.
+The backend reads `OPENAI_API_KEY` from the environment or a root `.env` file. See `.env.example`; do not place a key in the frontend. Without a key, manual simulation and saved replay still work. **Test next hypothesis** makes one paid proposal call. **Start auto** runs up to the chosen number of iterations, with one paid proposal per iteration. No model calls run automatically on page load or when the dropdown changes.
 
-Fast mode is enabled on this laptop with `OPENAI_SERVICE_TIER=fast` in the ignored local `.env`. Each proposal passes this setting to the Responses API while keeping the same model, reasoning effort, images and output schema. Set it to `default` for Standard processing, or `auto` to follow the API project's setting (the application default when unset). Restart after changing it. Health/bootstrap report the requested tier; new recordings capture both `requested_service_tier` and the API's actual `service_tier`, including any downgrade. GPT-6 Astra Fast mode uses 2× the applicable Standard token rates, has no latency SLA, and is unavailable with EU data residency. See the [official Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) and [Astra pricing](https://developers.openai.com/api/docs/models/gpt-6-astra). Existing recorded rehearsal timings predate this setting.
+The **Model** dropdown offers four fixed presets, ordered from speed to capability:
+
+| Preset | Model | Reasoning | Processing |
+|---|---|---|---|
+| Speed | GPT-5.6 Luna | None | Fast |
+| Balanced | GPT-5.6 Terra | Low | Fast |
+| Strong | GPT-5.6 Sol | Low | Fast |
+| Strongest (default) | GPT-6 Astra | Low | Fast |
+
+The selected preset applies to both single iterations and the entire next auto run, including restarts. You can switch models between runs while retaining the best geological history. The dropdown is locked during running work and replay; returning to live preserves your selection. Run labels retain the model that actually produced each proposal. This ordering describes preset intent, not a measured latency guarantee for this map.
+
+All four UI presets request Fast mode while preserving the five images and output schema. Scripts and API requests that omit `model_preset` retain the environment defaults: `OPENAI_MODEL=gpt-6-astra`, `OPENAI_REASONING_EFFORT=low`, and `OPENAI_SERVICE_TIER=auto` (set to `fast` in this laptop's ignored `.env`). For those callers, set the service tier to `default` for Standard processing, or `auto` to follow the API project's setting, then restart. Health/bootstrap report these legacy defaults and bootstrap separately lists the UI presets. New recordings capture the selected preset, effective model and reasoning effort, plus requested and actual service tiers, including any downgrade. GPT-6 Astra Fast mode uses 2× the applicable Standard token rates, has no latency SLA, and is unavailable with EU data residency. See the [official Fast mode guide](https://developers.openai.com/api/docs/guides/fast-mode) and [Astra pricing](https://developers.openai.com/api/docs/models/gpt-6-astra). Existing recorded rehearsal timings predate this setting.
 
 The UI distinguishes **Fast requested** from the response's **Fast confirmed**, and reports proposal and numerical tuning times separately. A September 8 local audit found all 23 instrumented recordings actually received Fast processing. Four identical-input diagnostic calls averaged **16.10 s Standard / 11.42 s Fast**, about **1.41×** for full completion; pair ratios were 1.10× and 1.96×. Reasoning/output lengths differed, so this small test is not a speed guarantee. The guide's “up to 2.5×” explanation concerns GPT-5.6 Sol, not an Astra end-to-end guarantee. See [the measured results](data/api_latency_audit.json). `scripts/benchmark_api_latency.py --dry-run` checks the request without paid calls; omitting `--dry-run` makes at most four paid calls and should only be done while the interactive demo is idle.
 
@@ -40,7 +51,7 @@ The **Terrain** tab shows the measured elevations. **Vertical 1× / 2×** change
 
 ## Automatic investigation
 
-Set **Iterations** to an integer from **1–100** (default **20**), then click **Start auto**. It begins from the current best live model and makes sequential proposal → simulation → measurement calls. The server enforces the 100-iteration cap. Auto mode carries the configured service tier, including this laptop's Fast setting. In replay, first click **Return to live**.
+Choose a **Model**, set **Iterations** to an integer from **1–100** (default **20**), then click **Start auto**. It begins from the current best live geology and makes sequential proposal → simulation → measurement calls. The server enforces the 100-iteration cap and retains the chosen model preset across every branch and restart. In replay, first click **Return to live**.
 
 The run keeps a best model for the current branch and a separate best overall, both ranked by the combined fit score below. It restarts after **four consecutive attempts without an overall improvement**, or **ten attempts in one branch**. Odd-numbered restarts use fresh undeformed strata with varied layer intervals and elevation; even-numbered restarts broadly perturb the overall best's existing geometry and strata, falling back to undeformed strata when needed. No prebuilt fold is inserted. All branches retain the same seven unit IDs, observation mask and measured terrain.
 

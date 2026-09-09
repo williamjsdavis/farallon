@@ -131,6 +131,9 @@ def test_propose_requests_configured_tier_and_reports_actual_tier(
     }
     assert {key: proposal[key] for key in provider_stub.payload} == provider_stub.payload
     assert proposal["response_id"] == "resp_mock_only"
+    assert proposal["model"] == server.MODEL
+    assert proposal["reasoning_effort"] == server.EFFORT
+    assert proposal["model_preset"] is None
     assert proposal["requested_service_tier"] == requested
     assert proposal["service_tier"] == returned
 
@@ -168,6 +171,81 @@ def test_cached_reference_prefix_survives_changed_iteration_context(provider_stu
         second_current["map_image"], second_current["error_image"],
     ]
     assert not any("prompt_cache_breakpoint" in item for item in dynamic)
+
+
+@pytest.mark.parametrize("preset,model,effort", [
+    ("luna", "gpt-5.6-luna", "none"),
+    ("terra", "gpt-5.6-terra", "low"),
+    ("sol", "gpt-5.6-sol", "low"),
+    ("astra", "gpt-6-astra", "low"),
+])
+def test_explicit_model_preset_controls_real_request_and_metadata(
+    monkeypatch, provider_stub, preset, model, effort,
+):
+    monkeypatch.setattr(server, "MODEL", "env-model")
+    monkeypatch.setattr(server, "EFFORT", "high")
+    monkeypatch.setattr(server, "SERVICE_TIER", "default")
+    provider_stub.response.service_tier = "priority"
+    request = server.IterationRequest(program=server.BASELINE, model_preset=preset)
+    current = {"metrics": {"score": 0.1}, "map_image": "prediction", "error_image": "mismatch"}
+    proposed = asyncio.run(server.propose(request, current))
+    call = provider_stub.create.call_args.kwargs
+    assert call["model"] == proposed["model"] == model
+    assert call["reasoning"] == {"effort": effort}
+    assert proposed["reasoning_effort"] == effort
+    assert call["service_tier"] == proposed["requested_service_tier"] == "fast"
+    assert proposed["service_tier"] == "priority"
+    assert proposed["model_preset"] == preset
+    assert model in call["prompt_cache_key"] and effort in call["prompt_cache_key"]
+    assert sum(item["type"] == "input_image" for message in call["input"] for item in message["content"]) == 5
+    assert call["text"]["format"]["strict"] is True
+    assert call["prompt_cache_options"] == {"mode": "explicit", "ttl": "30m"}
+    assert (server.MODEL, server.EFFORT, server.SERVICE_TIER) == ("env-model", "high", "default")
+
+
+def test_omitted_preset_resolves_environment_once_per_request(monkeypatch, provider_stub):
+    monkeypatch.setattr(server, "MODEL", "gpt-5.6-terra")
+    monkeypatch.setattr(server, "EFFORT", "none")
+    monkeypatch.setattr(server, "SERVICE_TIER", "default")
+    request = server.IterationRequest(program=server.BASELINE)
+    current = {"metrics": {"score": 0.1}, "map_image": "prediction", "error_image": "mismatch"}
+    first = asyncio.run(server.propose(request, current))
+    monkeypatch.setattr(server, "MODEL", "gpt-6-astra")
+    monkeypatch.setattr(server, "EFFORT", "low")
+    monkeypatch.setattr(server, "SERVICE_TIER", "fast")
+    again = asyncio.run(server.propose(request, current))
+    for value in (first, again):
+        assert value["model"] == "gpt-5.6-terra"
+        assert value["reasoning_effort"] == "none"
+        assert value["requested_service_tier"] == "default"
+        assert value["model_preset"] is None
+    calls = [entry.kwargs for entry in provider_stub.create.call_args_list]
+    assert calls[0]["model"] == calls[1]["model"] == "gpt-5.6-terra"
+    assert calls[0]["prompt_cache_key"] == calls[1]["prompt_cache_key"]
+    new = asyncio.run(server.propose(server.IterationRequest(program=server.BASELINE), current))
+    assert new["model"] == "gpt-6-astra" and new["requested_service_tier"] == "fast"
+    assert provider_stub.create.call_args.kwargs["prompt_cache_key"] != calls[0]["prompt_cache_key"]
+
+
+@pytest.mark.parametrize("endpoint", ["iterate", "auto"])
+def test_unknown_model_preset_rejected_before_provider(provider_stub, endpoint):
+    response = TestClient(server.app).post(f"/api/{endpoint}", json={
+        "program": server.BASELINE, "model_preset": "unknown-model", "refine": False})
+    assert response.status_code == 422
+    provider_stub.create.assert_not_awaited()
+    provider_stub.constructor.assert_not_called()
+
+
+def test_bootstrap_exposes_four_presets_in_display_order(monkeypatch):
+    monkeypatch.setattr(server, "render_result", lambda *args, **kwargs: {"id": "baseline"})
+    body = TestClient(server.app).get("/api/bootstrap").json()
+    assert body["default_model_preset"] == "astra"
+    presets = body["model_presets"]
+    assert [preset["id"] for preset in presets] == ["luna", "terra", "sol", "astra"]
+    assert [preset["reasoning_effort"] for preset in presets] == ["none", "low", "low", "low"]
+    assert all(preset["service_tier"] == "fast" for preset in presets)
+    assert all(set(preset) == {"id", "model", "label", "description", "reasoning_effort", "service_tier"}
+               and preset["label"] and preset["description"] for preset in presets)
 
 
 def test_health_and_bootstrap_expose_requested_tier(monkeypatch):
@@ -212,3 +290,29 @@ def test_iteration_record_preserves_requested_and_returned_tiers(
         assert value["requested_service_tier"] == "fast"
         assert value["service_tier"] == "default"
     provider_stub.create.assert_awaited_once()
+
+
+@pytest.mark.parametrize("preset,model,effort", [
+    ("luna", "gpt-5.6-luna", "none"), ("sol", "gpt-5.6-sol", "low"),
+])
+def test_selected_model_metadata_is_saved_with_manual_attempt(
+    monkeypatch, tmp_path, provider_stub, preset, model, effort,
+):
+    monkeypatch.setattr(server, "ROOT", tmp_path)
+    monkeypatch.setattr(server, "MODEL", "gpt-6-astra")
+    monkeypatch.setattr(server, "SERVICE_TIER", "default")
+    provider_stub.response.service_tier = "priority"
+    monkeypatch.setattr(server, "render_result", lambda history, *args, **kwargs: {
+        "id": "bbbbbbbbbbbb", "program": server.history_to_program(history),
+        "metrics": {"miou": 0.03, "score": 0.025}, "map_image": "prediction", "error_image": "mismatch"})
+    response = TestClient(server.app).post("/api/iterate", json={
+        "program": server.BASELINE, "refine": False, "model_preset": preset})
+    assert response.status_code == 200
+    events = [json.loads(line) for line in response.text.splitlines()]
+    assert events[-1]["type"] == "result"
+    saved = json.loads((tmp_path / "data/runs/bbbbbbbbbbbb.json").read_text())
+    for value in (events[1], events[-1], saved, saved["proposal"]):
+        assert value["model"] == model and value["reasoning_effort"] == effort
+        assert value["model_preset"] == preset
+        assert value["requested_service_tier"] == "fast"
+        assert value["service_tier"] == "priority"

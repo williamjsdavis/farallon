@@ -4,6 +4,14 @@ export type RockUnit = {
   color: string;
   rgb: number[];
 };
+export type ModelPreset = {
+  id: 'luna' | 'terra' | 'sol' | 'astra';
+  model: string;
+  label: string;
+  description: string;
+  reasoning_effort: 'none' | 'low';
+  service_tier: string;
+};
 export type Target = {
   title: string;
   labeledFraction: number;
@@ -61,6 +69,9 @@ export type Proposal = {
   expected_effect: string;
   program: string;
   parameters_to_refine: string[];
+  model?: string;
+  model_preset?: ModelPreset['id'] | null;
+  reasoning_effort?: string;
 };
 export type RunRecord = {
   scene_id?: string;
@@ -73,6 +84,8 @@ export type RunRecord = {
   elapsed_ms: number;
   search: { evaluations: number; elapsed_ms: number };
   model: string;
+  model_preset?: ModelPreset['id'] | null;
+  reasoning_effort?: string;
   requested_service_tier?: string;
   service_tier?: string | null;
   auto?: {

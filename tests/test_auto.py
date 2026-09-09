@@ -207,6 +207,51 @@ def test_scored_restart_can_be_global_best_with_explicit_provenance(isolated_aut
         "branch": 2, "description": "Mock random seed improvement"}
 
 
+@pytest.mark.parametrize("preset,model,effort,tier", [
+    ("luna", "gpt-5.6-luna", "none", "fast"),
+    (None, "gpt-5.6-terra", "high", "default"),
+])
+def test_auto_preserves_resolved_model_through_restart(
+    isolated_auto, monkeypatch, preset, model, effort, tier,
+):
+    monkeypatch.setattr(server, "MODEL", "gpt-5.6-terra")
+    monkeypatch.setattr(server, "EFFORT", "high")
+    monkeypatch.setattr(server, "SERVICE_TIER", "default")
+    captured = []
+
+    async def unchanged(request, current):
+        settings = server.resolve_model(request)
+        captured.append((request.model_copy(deep=True), settings))
+        # An in-flight run must retain its snapshot even if defaults are changed.
+        monkeypatch.setattr(server, "MODEL", "gpt-6-astra")
+        monkeypatch.setattr(server, "EFFORT", "low")
+        monkeypatch.setattr(server, "SERVICE_TIER", "fast")
+        return {**proposal(request.program), **server.asdict(settings),
+                "service_tier": "priority" if settings.requested_service_tier == "fast" else "default"}
+
+    monkeypatch.setattr(server, "propose", AsyncMock(side_effect=unchanged))
+    events = read_events(isolated_auto.client.post(
+        "/api/auto", json=request_body(max_iterations=5, model_preset=preset)))
+    results = [event for event in events if event["type"] == "result"]
+    assert len(captured) == len(results) == 5
+    assert events[0]["model"] == model and events[0]["model_preset"] == preset
+    assert events[0]["reasoning_effort"] == effort and events[0]["requested_service_tier"] == tier
+    assert results[-1]["auto"]["branch"] == 2
+    assert captured[-1][0].previous == []
+    for request, settings in captured:
+        assert request.model_preset == preset
+        assert settings.model == model and settings.reasoning_effort == effort
+        assert settings.requested_service_tier == tier
+        assert settings is captured[0][1]
+    for result in results:
+        saved = json.loads((isolated_auto.path / f"data/runs/{result['result']['id']}.json").read_text())
+        for value in (result, saved, saved["proposal"]):
+            assert value["model"] == model and value["model_preset"] == preset
+            assert value["reasoning_effort"] == effort
+            assert value["requested_service_tier"] == tier
+            assert value["service_tier"] == ("priority" if tier == "fast" else "default")
+
+
 def test_stop_finishes_current_attempt_without_another_call(isolated_auto, monkeypatch):
     async def scenario():
         entered, finish = asyncio.Event(), asyncio.Event()
