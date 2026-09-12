@@ -23,3 +23,6 @@ data/runs/*
 tmp/
 *.tsbuildinfo
 .DS_Store
+
+# Raw screen recordings (hundreds of MB each); GIFs are built from them by scripts/make-*.sh
+*.mov
