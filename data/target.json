@@ -336,7 +336,7 @@
       "figure": "Figure 1, printed page 409",
       "doi": "10.1130/GES00088.1",
       "url": "https://doi.org/10.1130/GES00088.1",
-      "localPaper": "papers/Fiore-et-al-Geosphere-2007.pdf",
+      "reference": "papers/REFERENCES.md",
       "role": "Supplied geological map; target observations"
     }
   ],

@@ -160,7 +160,7 @@ def build_target(source_path: Path = DEFAULT_SOURCE, output_dir: Path = ROOT / "
         "classFractions": {key: count / total_pixels for key, count in class_counts.items()},
         "excludedCounts": excluded_counts,
         "classification": {"method": "Nearest fixed legend color in 8-bit sRGB", "maxColorDistance": COLOR_TOLERANCE, "quaternaryRGB": QUATERNARY_RGB, "quaternaryUnitId": 8, "quaternaryObserved": True, "requireOpaqueSource": True, "maskFixedAcrossCandidates": True, "interpolateAcrossMasks": False, "exclusionReasonCodes": {"0": "observed geological unit, including Quaternary deposits", "1": "transparent/outside", "2": "reserved legacy code: excluded Quaternary cover; unused in this export", "3": "linework, annotation, or uncertain compressed color"}},
-        "citations": [{"authors": "Fiore Allwardt et al.", "year": 2007, "publication": "Geosphere", "figure": "Figure 1, printed page 409", "doi": "10.1130/GES00088.1", "url": "https://doi.org/10.1130/GES00088.1", "localPaper": "papers/Fiore-et-al-Geosphere-2007.pdf", "role": "Supplied geological map; target observations"}],
+        "citations": [{"authors": "Fiore Allwardt et al.", "year": 2007, "publication": "Geosphere", "figure": "Figure 1, printed page 409", "doi": "10.1130/GES00088.1", "url": "https://doi.org/10.1130/GES00088.1", "reference": "papers/REFERENCES.md", "role": "Supplied geological map; target observations"}],
         "provenance": "Source figure supplied by the user. This target was rasterized from that figure, not from the NPS BICA GeoPackage or the Rioux USGS map. No new license is asserted for the source figure.",
         "warnings": [
             "This is an illustrative map interpretation, not dense ground samples or a surveyed reconstruction.",

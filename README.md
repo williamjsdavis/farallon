@@ -131,6 +131,10 @@ This is a schematic inverse-modeling demonstration, not a recovered unique histo
 
 Analytic fold shear fits effective vertical intervals, not preserved normal bed thicknesses. Multiple additive anticline/syncline events commute, so changing only their order cannot establish event timing. Fold-axis arrows are not surface faults. A good map fit constrains exposure patterns more strongly than subsurface geometry.
 
-Source: [Fiore Allwardt et al. (2007), Geosphere, Figure 1](https://doi.org/10.1130/GES00088.1). The supplied source figure is unchanged; crop, palette, mask, approximate scale and provenance are recorded in `data/target.json`. See [RESEARCH.md](RESEARCH.md) for the design research.
+Source: [Fiore Allwardt et al. (2007), Geosphere, Figure 1](https://doi.org/10.1130/GES00088.1). The supplied source figure is unchanged; crop, palette, mask, approximate scale and provenance are recorded in `data/target.json`. The figure is not covered by the MIT License; see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Full paper citations are in [papers/REFERENCES.md](papers/REFERENCES.md). See [RESEARCH.md](RESEARCH.md) for the design research.
 
-The [palette re-export and audit](data/palette_audit.json) samples all eight supplied WEBP legend interiors: every RGB equals its source median exactly, including Quaternary `#fbf08d`. The PDF legend differs by only 1–2 RGB channel values from the compressed WEBP. `scripts/audit_palette.py` reproduces the sampling and compares three gap/contact treatments using an explicitly archived prediction for display only. The 3D view applies terrain lighting to these same colors, so shaded rock faces appear darker than flat map swatches.
+The [palette re-export and audit](data/palette_audit.json) samples all eight supplied WEBP legend interiors: every RGB equals its source median exactly, including Quaternary `#fbf08d`. The legend in the published article PDF (not bundled) differs by only 1–2 RGB channel values from the compressed WEBP. `scripts/audit_palette.py` reproduces the sampling and compares three gap/contact treatments using an explicitly archived prediction for display only. The 3D view applies terrain lighting to these same colors, so shaded rock faces appear darker than flat map swatches.
+
+## License
+
+The [MIT License](LICENSE) covers the original code in this repository. Third-party material is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and is under its own terms.
